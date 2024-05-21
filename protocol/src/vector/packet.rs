@@ -4,14 +4,17 @@ use std::{fmt::Display, num::NonZeroUsize};
 
 use ds::{ByteOrder, RingSlice};
 
-use crate::kv::{
-    common::{
-        constants::{CapabilityFlags, StatusFlags},
-        error::Error::MySqlError,
-        packets::{ErrPacket, OkPacket, OkPacketDeserializer, OkPacketKind},
-        ParseBuf,
+use crate::{
+    kv::{
+        common::{
+            constants::{CapabilityFlags, StatusFlags},
+            error::Error::MySqlError,
+            packets::{ErrPacket, OkPacket, OkPacketDeserializer, OkPacketKind},
+            ParseBuf,
+        },
+        error::{Error, Result},
     },
-    error::{Error, Result},
+    Command, ResponseHeader,
 };
 
 const HEADER_LEN: usize = 4;
@@ -189,5 +192,58 @@ pub struct MysqlPacket {
 impl Display for MysqlPacket {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "seq: {}, payload:{:?}", self.seq, self.payload)
+    }
+}
+
+#[derive(Debug)]
+pub struct RedisPackAssemble {
+    pub(crate) header: Vec<u8>,
+    pub(crate) body: Vec<u8>,
+    pub(crate) rows: u16,
+    pub(crate) columns: u16,
+}
+
+#[derive(Debug)]
+pub struct RedisPackSimple {
+    pub(crate) packet: Vec<u8>,
+}
+
+#[derive(Debug)]
+pub enum RedisPack {
+    Assemble(RedisPackAssemble),
+    Simple(RedisPackSimple),
+}
+
+impl RedisPack {
+    #[inline]
+    pub fn with_simple(packet: Vec<u8>) -> Self {
+        let pack = RedisPackSimple { packet };
+        RedisPack::Simple(pack)
+    }
+
+    #[inline]
+    pub fn with_assamble(header: Vec<u8>, body: Vec<u8>, rows: u16, columns: u16) -> Self {
+        let assemble = RedisPackAssemble {
+            header,
+            body,
+            rows,
+            columns,
+        };
+        RedisPack::Assemble(assemble)
+    }
+
+    #[inline]
+    pub fn to_cmd(self, ok: bool) -> Command {
+        match self {
+            RedisPack::Simple(pack) => {
+                let mem = ds::MemGuard::from_vec(pack.packet);
+                Command::from(ok, mem)
+            }
+            RedisPack::Assemble(assemble) => {
+                let body = ds::MemGuard::from_vec(assemble.body);
+                let header = ResponseHeader::new(assemble.header, assemble.rows, assemble.columns);
+                Command::with_assemble_pack(ok, header, body)
+            }
+        }
     }
 }

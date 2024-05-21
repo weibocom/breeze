@@ -3,8 +3,9 @@ use crate::kv::common::constants::{CapabilityFlags, MAX_PAYLOAD_LEN};
 use crate::kv::error::Result;
 
 pub use crate::kv::common::proto::Text;
+use crate::ResponseHeader;
 
-use super::packet::MysqlRawPacket;
+use super::packet::{MysqlRawPacket, RedisPack};
 use crate::kv::common::{io::ParseBuf, packets::OkPacket, row::RowDeserializer};
 
 use std::{marker::PhantomData, sync::Arc};
@@ -125,7 +126,7 @@ impl<T: crate::kv::prelude::Protocol> QueryResult<T> {
 
     /// 解析meta后面的rows
     #[inline(always)]
-    pub(crate) fn parse_rows_to_redis(&mut self, oft: &mut usize) -> Result<Vec<u8>> {
+    pub(crate) fn parse_rows_to_redis(&mut self, oft: &mut usize) -> Result<RedisPack> {
         // 解析出mysql rows
         // 改为每次只处理本次的响应
         let mut rows = Vec::with_capacity(8);
@@ -187,12 +188,12 @@ pub struct SetColumns<'a> {
 }
 
 #[inline]
-pub fn format_to_redis(rows: &Vec<Row>) -> Vec<u8> {
+pub fn format_to_redis(rows: &Vec<Row>) -> RedisPack {
     let mut data = Vec::with_capacity(32 * rows.len());
     // 响应为空，返回
     if rows.len() == 0 {
         data.extend_from_slice("$-1\r\n".as_bytes());
-        return data;
+        return RedisPack::with_simple(data);
     }
 
     let columns = rows.get(0).expect("columns unexists").columns_ref();
@@ -203,12 +204,11 @@ pub fn format_to_redis(rows: &Vec<Row>) -> Vec<u8> {
     const VCARD_NAME: &[u8] = b"count(*)";
     if columns.len() == 1 && columns[0].name_ref().eq(VCARD_NAME) {
         format_for_vcard(rows, &mut data);
-        return data;
+        return RedisPack::with_simple(data);
     }
 
     // 至此，只有vrange了(select * ..)，后续可能还有其他协议
-    format_for_commons(rows, &mut data, columns);
-    data
+    format_for_commons(rows, columns)
 }
 
 fn format_for_vcard(rows: &Vec<Row>, data: &mut Vec<u8>) {
@@ -223,29 +223,38 @@ fn format_for_vcard(rows: &Vec<Row>, data: &mut Vec<u8>) {
 }
 
 /// 为vrange等带column header + rows的指令构建响应
-fn format_for_commons(rows: &Vec<Row>, data: &mut Vec<u8>, columns: &[Column]) {
+fn format_for_commons(rows: &Vec<Row>, columns: &[Column]) -> RedisPack {
+    // TODO old 实现，测试完毕后清理 fishermen
     // 构建 resp协议的header总array计数 以及 column的计数
-    data.put(&b"*2\r\n*"[..]);
-    data.put(columns.len().to_string().as_bytes());
-    data.put(CRLF);
+    // header.put(&b"*2\r\n*"[..]);
+
+    // header只记录column name，最后发送时再拼装，其只拼装第一个包的header
+    let mut header = Vec::with_capacity(6 + 8 * columns.len());
+    header.put(&b"*"[..]);
+    header.put(columns.len().to_string().as_bytes());
+    header.put(CRLF);
 
     // 构建columns 内容
     for idx in 0..columns.len() {
         let col = columns.get(idx).expect("column");
-        data.push(b'+');
-        data.put(col.name_str().as_bytes());
-        data.put(CRLF);
+        header.push(b'+');
+        header.put(col.name_str().as_bytes());
+        header.put(CRLF);
     }
 
     // 构建column values
     // 先构建value的header
-    let val_count = columns.len() * rows.len();
-    data.put_u8(b'*');
-    data.put(val_count.to_string().as_bytes());
-    data.put(CRLF);
+    // let val_count = columns.len() * rows.len();
+    // data.put_u8(b'*');
+    // data.put(val_count.to_string().as_bytes());
+    // data.put(CRLF);
     // 再写入每个row的val
+
+    let body_token_count = columns.len() * rows.len();
+    let mut body = Vec::with_capacity(64 * rows.len());
     for ri in 0..rows.len() {
         let row = rows.get(ri).expect("row unexists");
-        row.write_as_redis(data);
+        row.write_as_redis(&mut body);
     }
+    RedisPack::with_assamble(header, body, rows.len() as u16, columns.len() as u16)
 }

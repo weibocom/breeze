@@ -1,4 +1,4 @@
-use self::attachment::Attachement;
+use self::attachment::Attachment;
 
 use super::{command::get_cfg, flager::KvFlager, *};
 
@@ -42,17 +42,17 @@ pub fn parse_vector_detail(cmd: RingSlice, flag: &Flag) -> crate::Result<VectorC
 ///     1. 第一次目前只需要偏移位置和数量，滚动月表；
 ///     2. 第二次及之后，还需要保留解析出来的响应；
 #[inline]
-pub fn build_attachment(vcmd: &VectorCmd) -> Option<Vec<u8>> {
+pub fn build_attachment(vcmd: &VectorCmd) -> Attachment {
     // 如果没有count/limit，设置默认值
     if vcmd.limit.limit.len() > 0 {
         assert!(vcmd.limit.offset.len() > 0, "vcmd:{:?}", vcmd);
         let offset = vcmd.limit.offset.str_num(..) as u16;
         let count = vcmd.limit.limit.str_num(..) as u16;
-        Some(Attachement::new(offset, count).to_vec())
+        Attachment::new(offset, count)
     } else {
         // 如果limit不存在，offset也应该不存在，此时使用默认值
         assert_eq!(vcmd.limit.offset.len(), 0, "vcmd:{:?}", vcmd);
-        Some(Attachement::new(0, DEFAULT_QUERY_COUNT).to_vec())
+        Attachment::new(0, DEFAULT_QUERY_COUNT)
     }
 }
 
