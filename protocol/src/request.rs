@@ -26,8 +26,8 @@ impl crate::Request for Request {
         }
     }
     #[inline]
-    fn on_complete(self, resp: Command) {
-        self.ctx().on_complete(resp);
+    fn on_complete<P: crate::Proto>(self, parser: &P, mut resp: Command) {
+        self.ctx().on_complete(parser, resp);
     }
     #[inline]
     fn on_err(self, err: Error) {
@@ -65,6 +65,10 @@ impl crate::Request for Request {
     #[inline]
     fn attachment(&self) -> Option<&Vec<u8>> {
         self.ctx().attachment()
+    }
+    #[inline]
+    fn update_attachment<P: crate::Proto>(&mut self, parser: &P, response: &mut Command) {
+        self.ctx().update_attachment(parser, response);
     }
     fn extra_ctx(&self) -> &crate::ContextExtra {
         &self.ctx().extra

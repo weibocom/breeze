@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::sync::Arc;
 
-use crate::{Command, HashedCommand};
+use crate::{Command, HashedCommand, Proto};
 
 pub type Context = u64;
 pub type ContextExtra = u64;
@@ -50,7 +50,7 @@ pub trait Request:
     fn start_at(&self) -> Instant;
     fn on_noforward(&mut self);
     fn on_sent(self) -> Option<Self>;
-    fn on_complete(self, resp: Command);
+    fn on_complete<P: crate::Proto>(self, parser: &P, resp: Command);
     fn on_err(self, err: crate::Error);
     #[inline]
     fn context_mut(&mut self) -> &mut Context {
@@ -74,6 +74,7 @@ pub trait Request:
     fn attach(&mut self, attachment: Vec<u8>);
     // 获取附加信息
     fn attachment(&self) -> Option<&Vec<u8>>;
+    fn update_attachment<P: crate::Proto>(&mut self, parser: &P, response: &mut Command);
 
     // 重试时上次响应是否成功
     fn retry_rsp_ok(&self) -> bool {

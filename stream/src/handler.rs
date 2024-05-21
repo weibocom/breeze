@@ -138,7 +138,7 @@ where
                 // 统计请求耗时。
                 self.rtt += start.elapsed();
                 self.parser.check(&*req, &cmd);
-                req.on_complete(cmd);
+                req.on_complete(&self.parser, cmd);
                 continue;
             }
             if l == self.s.len() {

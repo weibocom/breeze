@@ -15,10 +15,12 @@ use crate::kv::common::{proto::codec::PacketCodec, query_result::Or};
 use crate::kv::error::Error;
 use crate::kv::error::Result;
 use crate::kv::HandShakeStatus;
+use crate::ResponseHeader;
 use crate::{Command, StreamContext};
 use ds::RingSlice;
 
 use super::packet::MysqlRawPacket;
+use super::packet::RedisPack;
 use super::query_result::{QueryResult, Text};
 
 // const HEADER_LEN: usize = 4;
@@ -136,10 +138,9 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
 
     /// 构建最终的响应，并对已解析的内容进行take
     #[inline(always)]
-    pub(super) fn build_final_rsp_cmd(&mut self, ok: bool, rsp_data: Vec<u8>) -> Command {
+    pub(super) fn build_final_rsp_cmd(&mut self, ok: bool, redis_pack: RedisPack) -> Command {
         // 构建最终返回给client的响应内容
-        let mem = ds::MemGuard::from_vec(rsp_data);
-        let cmd = Command::from(ok, mem);
+        let cmd = redis_pack.to_cmd(ok);
         log::debug!("+++ build kvector rsp, ok:{} => {:?}", ok, cmd);
 
         // 返回最终响应前，take走已经解析的数据

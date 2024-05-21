@@ -8,7 +8,7 @@ use std::{
     },
 };
 
-use crate::BackendQuota;
+use crate::{BackendQuota, Protocol};
 use ds::{time::Instant, AtomicWaker};
 
 use crate::{request::Request, Command, Error, HashedCommand};
@@ -119,11 +119,20 @@ impl CallbackContext {
         }
     }
     #[inline]
-    pub fn on_complete(&mut self, resp: Command) {
+    pub fn on_complete<P: crate::Proto>(&mut self, parser: &P, mut resp: Command) {
         log::debug!("on-complete:{} resp:{}", self, resp);
         // 异步请求不关注response。
         if !self.async_mode {
             debug_assert!(!self.complete(), "{:?}", self);
+            self.update_attachment(parser, &mut resp);
+            // 如果有attachment，需要解析attachment，并确认需要重试
+            let attach_ok = match self.attachment {
+                None => resp.ok(),
+                Some(ref attach) => parser.queried_enough_responses(attach),
+            };
+            if resp.ok() && !attach_ok {
+                resp.update_ok(false);
+            }
             self.swap_response(resp);
         }
         self.on_done();
@@ -138,6 +147,18 @@ impl CallbackContext {
                 //assert!(!self.ctx.try_next && !self.ctx.write_back, "{}", self);
                 None
             }
+        }
+    }
+
+    #[inline]
+    pub(crate) fn update_attachment<P: crate::parser::Proto>(
+        &mut self,
+        parser: &P,
+        resp: &mut Command,
+    ) {
+        if self.attachment.is_some() {
+            let attach = self.attachment.as_mut().expect("attach");
+            parser.update_attachment(attach, resp);
         }
     }
 

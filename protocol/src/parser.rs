@@ -8,8 +8,8 @@ use crate::metrics::HostMetric;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
 use crate::uuid::Uuid;
-use crate::vector::Vector;
-use crate::{Error, Flag, OpCode, Operation, Result, Stream, Writer};
+use crate::vector::{attachment, Vector};
+use crate::{Error, Flag, OpCode, Operation, ResponseHeader, Result, Stream, Writer};
 
 #[derive(Clone)]
 #[enum_dispatch(Proto)]
@@ -128,6 +128,15 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn max_tries(&self, _req_op: Operation) -> u8 {
         1_u8
     }
+
+    #[inline]
+    fn update_attachment(&self, attachment: &mut Vec<u8>, response: &mut Command) {
+        // 默认情况下，attachment应该为空
+        assert!(false, "{:?} {response}", attachment);
+    }
+    fn queried_enough_responses(&self, attachment: &[u8]) -> bool {
+        true
+    }
 }
 
 pub trait RequestProcessor {
@@ -139,8 +148,10 @@ pub trait RequestProcessor {
     fn process(&mut self, req: HashedCommand, last: bool);
 }
 
+// TODO Command实质就是response，考虑直接用response？ fishermen
 pub struct Command {
     ok: bool,
+    pub(crate) header: ResponseHeader,
     cmd: MemGuard,
 }
 
@@ -156,14 +167,31 @@ pub struct HashedCommand {
 impl Command {
     #[inline]
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
-        Self { ok, cmd }
+        Self {
+            ok,
+            header: Default::default(),
+            cmd,
+        }
     }
+    #[inline]
+    pub fn with_assemble_pack(ok: bool, header: ResponseHeader, body: ds::MemGuard) -> Self {
+        Self {
+            ok,
+            header,
+            cmd: body,
+        }
+    }
+
     pub fn from_ok(cmd: ds::MemGuard) -> Self {
         Self::from(true, cmd)
     }
     #[inline]
     pub fn ok(&self) -> bool {
         self.ok
+    }
+    #[inline]
+    pub fn update_ok(&mut self, ok: bool) {
+        self.ok = ok;
     }
 }
 impl std::ops::Deref for Command {
