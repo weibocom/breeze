@@ -44,6 +44,7 @@ pub struct CallbackContext {
     first: bool,                         // 当前请求是否是所有子请求的第一个
     last: bool,                          // 当前请求是否是所有子请求的最后一个
     tries: AtomicU8,
+    resp_count: u32, // 已收到的响应消息条数，目前只有kvector在使用
     request: HashedCommand,
     response: MaybeUninit<Command>,
     start: Instant, // 请求的开始时间
@@ -83,6 +84,7 @@ impl CallbackContext {
             callback: cb,
             start: now,
             tries: 0.into(),
+            resp_count: 0,
             waker,
             quota: None,
             attachment: None,
@@ -124,6 +126,7 @@ impl CallbackContext {
         // 异步请求不关注response。
         if !self.async_mode {
             debug_assert!(!self.complete(), "{:?}", self);
+
             self.update_attachment(parser, &mut resp);
             // 如果有attachment，需要解析attachment，并确认需要重试
             let attach_ok = match self.attachment {
@@ -133,6 +136,8 @@ impl CallbackContext {
             if resp.ok() && !attach_ok {
                 resp.update_ok(false);
             }
+
+            self.resp_count += resp.count();
             self.swap_response(resp);
         }
         self.on_done();
@@ -320,11 +325,22 @@ impl CallbackContext {
     #[inline]
     pub fn attach(&mut self, attachment: Vec<u8>) {
         self.attachment = Some(attachment);
+        self.last = false; // 响应行数达到需求，才修改为true
     }
 
     #[inline]
     pub fn attachment(&self) -> Option<&Vec<u8>> {
         self.attachment.as_ref()
+    }
+    #[inline]
+    pub fn resp_count(&self) -> u32 {
+        self.resp_count
+    }
+    /// mrange响应消息行数符合要求后，设置当前请求为last
+    #[inline]
+    pub fn set_last(&mut self) {
+        // todo: 可优化为依据请求数或者响应数量判断可以设置last为true
+        self.last = true;
     }
 }
 

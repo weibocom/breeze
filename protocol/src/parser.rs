@@ -8,7 +8,7 @@ use crate::metrics::HostMetric;
 use crate::msgque::MsgQue;
 use crate::redis::Redis;
 use crate::uuid::Uuid;
-use crate::vector::{attachment, Vector};
+use crate::vector::Vector;
 use crate::{Error, Flag, OpCode, Operation, ResponseHeader, Result, Stream, Writer};
 
 #[derive(Clone)]
@@ -134,7 +134,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         // 默认情况下，attachment应该为空
         assert!(false, "{:?} {response}", attachment);
     }
-    fn queried_enough_responses(&self, attachment: &[u8]) -> bool {
+    fn queried_enough_responses(&self, _attachment: &[u8]) -> bool {
         true
     }
 }
@@ -152,6 +152,7 @@ pub trait RequestProcessor {
 pub struct Command {
     ok: bool,
     pub(crate) header: ResponseHeader,
+    count: u32,
     cmd: MemGuard,
 }
 
@@ -170,14 +171,17 @@ impl Command {
         Self {
             ok,
             header: Default::default(),
+            count: 0,
             cmd,
         }
     }
     #[inline]
     pub fn with_assemble_pack(ok: bool, header: ResponseHeader, body: ds::MemGuard) -> Self {
+        let count = header.rows as u32;
         Self {
             ok,
             header,
+            count,
             cmd: body,
         }
     }
@@ -190,8 +194,16 @@ impl Command {
         self.ok
     }
     #[inline]
+
     pub fn update_ok(&mut self, ok: bool) {
         self.ok = ok;
+    }
+    pub fn count(&self) -> u32 {
+        self.count
+    }
+    #[inline]
+    pub fn set_count(&mut self, n: u32) {
+        self.count = n;
     }
 }
 impl std::ops::Deref for Command {

@@ -3,7 +3,6 @@ use crate::kv::common::constants::{CapabilityFlags, MAX_PAYLOAD_LEN};
 use crate::kv::error::Result;
 
 pub use crate::kv::common::proto::Text;
-use crate::ResponseHeader;
 
 use super::packet::{MysqlRawPacket, RedisPack};
 use crate::kv::common::{io::ParseBuf, packets::OkPacket, row::RowDeserializer};
@@ -250,7 +249,6 @@ fn format_for_commons(rows: &Vec<Row>, columns: &[Column]) -> RedisPack {
     // data.put(CRLF);
     // 再写入每个row的val
 
-    let body_token_count = columns.len() * rows.len();
     let mut body = Vec::with_capacity(64 * rows.len());
     for ri in 0..rows.len() {
         let row = rows.get(ri).expect("row unexists");
