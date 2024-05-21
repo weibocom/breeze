@@ -77,17 +77,7 @@ impl<P, Req> BackendChecker<P, Req> {
 
             // TODO rtt放到handler中，同时增加协议级别的分类统计，待review确认 fishermen
             // let rtt = path_addr.rtt("req");
-            let mut stream = rt::Stream::from(stream.expect("not expected"));
-            // redis资源的backend附加一个ext，用于解析array响应
-            use protocol::redis::packet::MultiBulk;
-            let paser_ext = if self.res.name().eq_ignore_ascii_case("redis") {
-                let data: Box<Vec<_>> = Box::new(Vec::<MultiBulk>::with_capacity(3)); // 3层嵌套覆盖常见场景
-                Some(Box::into_raw(data) as usize)
-            } else {
-                None
-            };
-            log::info!("set paser_ext {} {:?}", self.addr, paser_ext);
-            stream.set_ext(paser_ext);
+            let mut stream = rt::Stream::build(stream.expect("not expected"), self.res);
             let rx = &mut self.rx;
 
             if self.parser.config().need_auth {
@@ -130,10 +120,6 @@ impl<P, Req> BackendChecker<P, Req> {
                     let mut unexpected_resp = Path::base().num("unexpected_resp");
                     unexpected_resp += 1;
                 }
-            }
-            if let Some(ptr) = paser_ext {
-                log::info!("free paser_ext {:?}", paser_ext);
-                _ = unsafe { Box::from_raw(ptr as *mut Vec<MultiBulk>) };
             }
         }
         metrics::decr_task();

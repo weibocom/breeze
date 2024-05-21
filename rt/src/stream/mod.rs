@@ -6,6 +6,7 @@ use std::pin::Pin;
 use std::task::{ready, Context, Poll, Waker};
 
 use ds::{GuardedBuffer, MemGuard, MemPolicy, RingSlice};
+use protocol::{redis::packet::MultiBulk, Resource};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use protocol::StreamContext;
@@ -26,7 +27,7 @@ pub struct Stream<S> {
     buf: TxBuffer,
     rx_buf: GuardedBuffer,
     ctx: StreamContext,
-    ext: Option<usize>,
+    ext: Option<usize>, // 扩展字段，目前仅redis使用
 }
 impl<S> From<S> for Stream<S> {
     #[inline]
@@ -44,8 +45,30 @@ impl<S> From<S> for Stream<S> {
     }
 }
 impl<S> Stream<S> {
-    pub fn set_ext(&mut self, ext: Option<usize>) {
-        self.ext = ext;
+    #[inline]
+    pub fn build(s: S, res: Resource) -> Self {
+        // redis资源的backend附加一个ext，用于解析array响应
+        let paser_ext = if res.name().eq_ignore_ascii_case("redis") {
+            let data: Box<Vec<_>> = Box::new(Vec::<MultiBulk>::with_capacity(3)); // 3层嵌套覆盖常见场景
+            Some(Box::into_raw(data) as usize)
+        } else {
+            None
+        };
+        // 除ext字段外，其他字段初始值与from一致
+        Self {
+            s: s.into(),
+            buf: TxBuffer::new(),
+            rx_buf: GuardedBuffer::new(2048, 64 * 1024 * 1024, 0),
+            ctx: Default::default(),
+            ext: paser_ext,
+        }
+    }
+}
+impl<S> Drop for Stream<S> {
+    fn drop(&mut self) {
+        if let Some(ptr) = self.ext {
+            _ = unsafe { Box::from_raw(ptr as *mut Vec<MultiBulk>) };
+        }
     }
 }
 impl<S: AsyncRead + Unpin + std::fmt::Debug> AsyncRead for Stream<S> {
