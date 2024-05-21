@@ -3,14 +3,12 @@ use std::fmt::{Display, Formatter};
 use crate::{msgque::ReadStrategy, CloneableAtomicUsize};
 use std::sync::atomic::Ordering::Relaxed;
 
-// 最大连续命中次数，超过该次数则重置命中次数
-const MAX_CONTINUE_HITS: usize = 100;
 /// 依次轮询队列列表，注意整个列表在初始化时需要进行随机乱序处理
 #[derive(Debug, Clone, Default)]
 pub struct RoundRobbin {
     que_len: usize,
+    // 低8bits放连续hits次数，其他bits放索引位置
     current_pos: CloneableAtomicUsize,
-    continue_hits: CloneableAtomicUsize,
 }
 
 impl ReadStrategy for RoundRobbin {
@@ -20,37 +18,28 @@ impl ReadStrategy for RoundRobbin {
         let rand: usize = rand::random();
         Self {
             que_len: reader_len,
-            // current_pos: Arc::new(AtomicUsize::new(rand)),
-            current_pos: CloneableAtomicUsize::new(rand),
-            continue_hits: CloneableAtomicUsize::new(0),
+            current_pos: CloneableAtomicUsize::new(rand >> 8 << 8),
         }
     }
     /// 实现策略很简单：持续轮询
     #[inline]
     fn get_read_idx(&self, last_idx: Option<usize>) -> usize {
-        let pos = match last_idx {
-            None => {
-                // 连续hits没有超过阀值，不进行轮询，只增加hits计数，否则重置hits，并将下次请求轮询到下个位置
-                let hits = self.continue_hits.load(Relaxed);
-                if hits < MAX_CONTINUE_HITS {
-                    self.continue_hits.fetch_add(1, Relaxed);
-                    self.current_pos.load(Relaxed)
-                } else {
-                    self.continue_hits.store(0, Relaxed);
-                    self.current_pos.fetch_add(1, Relaxed)
-                }
-            }
+        let pos = self.current_pos.fetch_add(1, Relaxed);
+        let new_pos = match last_idx {
+            None => pos,
             Some(lidx) => {
                 // 将pos向后移动一个位置，如果已经被移动了，则不再移动
-                let cur_idx = self.current_pos.load(Relaxed).wrapping_rem(self.que_len);
-                if cur_idx == lidx {
-                    self.current_pos.fetch_add(1, Relaxed);
+                if lidx == pos.que_idx(self.que_len) {
+                    let new_pos = (lidx + 1).to_pos();
+                    self.current_pos.store(new_pos, Relaxed);
+                    new_pos
+                } else {
+                    pos
                 }
-                // 无论如何，重试的时候都要尝试下一个idx
-                lidx + 1
             }
         };
-        pos.wrapping_rem(self.que_len)
+
+        new_pos.que_idx(self.que_len)
     }
 }
 
@@ -62,5 +51,27 @@ impl Display for RoundRobbin {
             self.que_len,
             self.current_pos.load(Relaxed)
         )
+    }
+}
+
+/// pos：低8位为单个idx的持续读取计数，高56位为队列的idx序号
+trait Pos {
+    fn que_idx(&self, que_len: usize) -> usize;
+}
+
+impl Pos for usize {
+    fn que_idx(&self, que_len: usize) -> usize {
+        self.wrapping_shr(8).wrapping_rem(que_len)
+    }
+}
+
+/// idx是队列的idx序号，通过将idx左移8位来构建一个新的pos
+trait Idx {
+    fn to_pos(&self) -> usize;
+}
+
+impl Idx for usize {
+    fn to_pos(&self) -> usize {
+        self.wrapping_shl(8)
     }
 }
