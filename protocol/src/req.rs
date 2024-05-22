@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::sync::Arc;
 
-use crate::{Command, HashedCommand, Proto};
+use crate::{Command, HashedCommand};
 
 pub type Context = u64;
 pub type ContextExtra = u64;
@@ -75,7 +75,7 @@ pub trait Request:
     // 获取附加信息
     fn attachment(&self) -> Option<&Vec<u8>>;
     fn update_attachment<P: crate::Proto>(&mut self, parser: &P, response: &mut Command);
-
+    fn set_max_tries(&mut self, max_tries: u8);
     // 重试时上次响应是否成功
     fn retry_rsp_ok(&self) -> bool {
         false

@@ -106,6 +106,9 @@ where
                     && req.operation().is_retrival()
                     && req.attachment().is_none()
                 {
+                    // 对于需要重复查询不同table的场景，目前暂时先设为最多6次，后续需要配置si表来调整逻辑
+                    req.set_max_tries(6);
+                    req.retry_on_rsp_notok(true);
                     req.attach(build_attachment(&vcmd).to_vec());
                 }
 
