@@ -27,8 +27,6 @@ use crate::shards::Shard;
 pub struct VectorService<E, P> {
     shards: Shards<E>,
     strategist: Strategist,
-    // 先简单定一个一个名字，方便打通，后续应该是一个策略
-    loop_table: bool,
     parser: P,
     cfg: Box<DnsConfig<VectorNamespace>>,
 }
@@ -40,7 +38,6 @@ impl<E, P> From<P> for VectorService<E, P> {
             parser,
             shards: Default::default(),
             strategist: Default::default(),
-            loop_table: false,
             cfg: Default::default(),
         }
     }
@@ -105,7 +102,10 @@ where
                 };
 
                 // 首次访问，如果协议、策略层面需要，设置attachment，后续在解析响应后更新
-                if self.loop_table && req.operation().is_retrival() && req.attachment().is_none() {
+                if self.strategist.more()
+                    && req.operation().is_retrival()
+                    && req.attachment().is_none()
+                {
                     req.attach(build_attachment(&vcmd).to_vec());
                 }
 
