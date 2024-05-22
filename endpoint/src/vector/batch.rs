@@ -65,10 +65,10 @@ impl Batch {
     }
 
     pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
-        if month == 12 {
-            return NaiveDate::from_ymd_opt((year + 1).into(), 1, 1).unwrap();
+        if month == 1 {
+            return NaiveDate::from_ymd_opt((year - 1).into(), 12, 1).unwrap();
         } else {
-            return NaiveDate::from_ymd_opt(year.into(), (month + 1).into(), 1).unwrap();
+            return NaiveDate::from_ymd_opt(year.into(), (month - 1).into(), 1).unwrap();
         }
     }
 
