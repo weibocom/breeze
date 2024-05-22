@@ -76,6 +76,11 @@ impl crate::Request for Request {
     fn extra_ctx_mut(&mut self) -> &mut crate::ContextExtra {
         &mut self.ctx().extra
     }
+
+    #[inline]
+    fn set_max_tries(&mut self, max_tries: u8) {
+        self.ctx().set_max_tries(max_tries);
+    }
 }
 impl Request {
     #[inline]
