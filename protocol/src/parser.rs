@@ -333,6 +333,7 @@ pub trait Commander<M: Metric<I>, I: MetricItem> {
     fn request_shard(&self) -> usize;
     fn metric(&self) -> &M;
     fn ctx(&self) -> u64;
+    fn attachment(&self) -> Option<&Vec<u8>>;
 }
 
 pub enum MetricName {

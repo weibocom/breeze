@@ -116,6 +116,12 @@ impl Protocol for Vector {
 
         if let Some(response) = response {
             log::debug!("+++ send to client {:?} => {:?}", ctx.request(), response);
+            if ctx.attachment().is_some() {
+                let attachment = ctx.attachment().expect("attachment");
+                // TODO 对于attachment，组装rsp写回sdk
+
+                return Ok(());
+            }
             if !response.ok() {
                 // 对于非ok的响应，需要构建rsp，发给client
                 w.write("-ERR ".as_bytes())?;

@@ -138,10 +138,6 @@ impl CallbackContext {
             if resp.ok() && !attach_ok {
                 resp.update_ok(false);
             }
-            // 响应数量或者请求次数达预期，不再继续请求了，适用kvector场景，先打通
-            if attach_ok || self.tries.load(Relaxed) == (self.max_tries - 1) {
-                self.set_last();
-            }
 
             self.resp_count += resp.count();
             self.swap_response(resp);
@@ -209,6 +205,10 @@ impl CallbackContext {
             // 需要重试或回写
             return self.goon();
         }
+
+        // 改到这里，不需要额外判断逻辑了
+        self.set_last();
+
         //markdone后，req标记为已完成，那么CallbackContext和CopyBidirectional都有可能被释放
         //CopyBidirectional会提前释放，所以需要提前clone一份
         //CallbackContext会提前释放，则需要在此clone到栈上
