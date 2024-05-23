@@ -227,9 +227,9 @@ fn format_for_commons(rows: &Vec<Row>, columns: &[Column]) -> RedisPack {
     // 构建 resp协议的header总array计数 以及 column的计数
     // header.put(&b"*2\r\n*"[..]);
 
-    // header只记录column name，最后发送时再拼装，其只拼装第一个包的header
+    // header记录*2以及column name，最后发送时再拼装，其只拼装第一个包的header
     let mut header = Vec::with_capacity(6 + 8 * columns.len());
-    header.put(&b"*"[..]);
+    header.put(&b"*2\r\n*"[..]);
     header.put(columns.len().to_string().as_bytes());
     header.put(CRLF);
 
