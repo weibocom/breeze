@@ -127,6 +127,8 @@ impl CallbackContext {
         if !self.async_mode {
             debug_assert!(!self.complete(), "{:?}", self);
 
+            // 将请求的状态置为非第一次请求，方便kvector构建下一轮请求
+            self.non_first();
             self.update_attachment(parser, &mut resp);
             // 如果有attachment，需要解析attachment，并确认需要重试
             let attach_ok = match self.attachment {
@@ -135,6 +137,10 @@ impl CallbackContext {
             };
             if resp.ok() && !attach_ok {
                 resp.update_ok(false);
+            }
+            // 响应数量或者请求次数达预期，不再继续请求了，适用kvector场景，先打通
+            if attach_ok || self.tries.load(Relaxed) == (self.max_tries - 1) {
+                self.set_last();
             }
 
             self.resp_count += resp.count();
@@ -346,6 +352,10 @@ impl CallbackContext {
     #[inline]
     pub fn set_max_tries(&mut self, max_tries: u8) {
         self.max_tries = max_tries;
+    }
+    #[inline]
+    pub fn non_first(&mut self) {
+        (self.first).then(|| self.first = false);
     }
 }
 

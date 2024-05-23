@@ -73,7 +73,9 @@ where
     fn send(&self, mut req: Self::Item) {
         let shard = (|| -> Result<&Shard<E>, protocol::Error> {
             //需要请求多轮的场景处理逻辑看作是一次新的请求，除外出错重试
-            let more = self.strategist.more() && req.retry_rsp_ok();
+            // let more = self.strategist.more() && req.retry_rsp_ok();
+            // 先打通
+            let more = self.strategist.more() && !req.first();
             let (year, shard_idx) = if req.ctx_mut().runs == 0 || more {
                 let (vcmd, date, shard_idx) = if more {
                     //非第一轮请求
