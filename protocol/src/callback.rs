@@ -135,12 +135,12 @@ impl CallbackContext {
                 None => resp.ok(),
                 Some(ref attach) => parser.queried_enough_responses(attach),
             };
-            if resp.ok() && !attach_ok {
-                resp.update_ok(false);
-            }
             // 响应数量或者请求次数达预期，不再继续请求了，适用kvector场景，先打通
             if attach_ok || self.tries.load(Relaxed) == (self.max_tries - 1) {
                 self.set_last();
+            }
+            if resp.ok() && !self.last() {
+                resp.update_ok(false);
             }
 
             self.resp_count += resp.count();
