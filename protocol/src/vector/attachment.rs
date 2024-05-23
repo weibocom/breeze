@@ -9,10 +9,11 @@ pub struct Attachment {
     pub(crate) left_count: u16,
     // 当前查询的时间游标，一般是年月，like：202405/2405
     cursor: YearMonth,
-    // 查询的子响应，第一个vec是header，后面是tokens
-    response: Vec<Vec<u8>>,
-    // 查询的子响应数量
-    response_tokens: u16,
+    // header，*2 + column names
+    header: Vec<u8>,
+    body: Vec<Vec<u8>>,
+    // 查询响应的body中token数量
+    body_token_count: u16,
 }
 
 /// 年月
@@ -42,8 +43,9 @@ impl Attachment {
             offset,
             left_count: count,
             cursor: Local::today().into(),
-            response: Vec::with_capacity(count as usize),
-            response_tokens: 0,
+            header: Vec::with_capacity(8),
+            body: Vec::with_capacity(count as usize),
+            body_token_count: 0,
         }
     }
 
@@ -66,23 +68,32 @@ impl Attachment {
 
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.response.is_empty()
+        self.body.is_empty()
     }
 
     pub fn attach_header(&mut self, header: Vec<u8>) {
-        assert!(header.len() > 0, "header is emtpy: {:?}", header);
-        assert_eq!(self.response.len(), 0, "attachment header is not empty");
-        assert_eq!(self.response_tokens, 0, "attachment header is not empty");
-
-        self.response.push(header);
+        self.header = header;
     }
     #[inline]
-    pub fn attach_resp_data(&mut self, resp: Vec<u8>, rows: u16, columns: u16) {
-        if resp.len() > 0 {
-            self.response.push(resp);
-        }
-        self.response_tokens += rows * columns;
+    pub fn attach_body(&mut self, body_data: Vec<u8>, rows: u16, columns: u16) {
+        self.body.push(body_data);
+        self.body_token_count += rows * columns;
         self.left_count.wrapping_sub(rows);
+    }
+
+    #[inline]
+    pub fn header(&self) -> &Vec<u8> {
+        &self.header
+    }
+
+    #[inline]
+    pub fn body(&self) -> &Vec<Vec<u8>> {
+        &self.body
+    }
+
+    #[inline]
+    pub fn body_token_count(&self) -> u16 {
+        self.body_token_count
     }
 }
 

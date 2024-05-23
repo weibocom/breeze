@@ -114,14 +114,23 @@ impl Protocol for Vector {
             return Ok(());
         }
 
-        if let Some(response) = response {
-            log::debug!("+++ send to client {:?} => {:?}", ctx.request(), response);
-            if ctx.attachment().is_some() {
-                let attachment = ctx.attachment().expect("attachment");
-                // TODO 对于attachment，组装rsp写回sdk
+        // 根据attachment写响应
+        if ctx.attachment().is_some() {
+            // 对于attachment，组装rsp: header(vec[0]) + *body_tokens + vec[1..]
+            let attach: Attachment = ctx.attachment().expect("attachment").as_slice().into();
+            if attach.body_token_count() > 0 {
+                w.write(attach.header())?;
+                w.write(format!("*{}\r\n", attach.body_token_count()).as_bytes())?;
+                for b in attach.body() {
+                    w.write(b.as_slice())?;
+                }
 
                 return Ok(());
             }
+        }
+
+        if let Some(response) = response {
+            log::debug!("+++ send to client {:?} => {:?}", ctx.request(), response);
             if !response.ok() {
                 // 对于非ok的响应，需要构建rsp，发给client
                 w.write("-ERR ".as_bytes())?;
@@ -133,6 +142,14 @@ impl Protocol for Vector {
                 // 1. 只返回影响的行数
                 // 2. 一行或多行数据
                 // 3. 结果为空
+                if response.header.rows > 0 {
+                    w.write(format!("*2\r\n").as_bytes())?;
+                    w.write(response.header.header.as_ref())?;
+                    w.write(
+                        format!("*{}\r\n", response.header.rows * response.header.columns)
+                            .as_bytes(),
+                    )?;
+                }
                 w.write_slice(response, 0)?; // value
             }
             return Ok(());
@@ -170,12 +187,12 @@ impl Protocol for Vector {
             let mut header_data = Vec::new();
             let header = &mut response.header;
             mem::swap(&mut header_data, &mut header.header);
-            attach.attach_resp_data(header_data, header.rows, header.columns);
+            attach.attach_header(header_data);
         }
 
         // TODO 先打通，此处的内存操作需要考虑优化 fishermen
         let header = &response.header;
-        attach.attach_resp_data(response.data().0.to_vec(), header.rows, header.columns);
+        attach.attach_body(response.data().0.to_vec(), header.rows, header.columns);
         attachment.clear();
         attachment.extend(attach.to_vec());
     }
