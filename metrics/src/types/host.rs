@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicI64, Ordering::*};
 
 static TASK_NUM: AtomicI64 = AtomicI64::new(0);
 static SOCKFILE_FAILED: AtomicI64 = AtomicI64::new(0);
+static PROTOCOL_INCOMPLETE: AtomicI64 = AtomicI64::new(0);
 
 pub struct Host {
     heap: Option<ds::HeapStats>, // 累积分配的堆内存
@@ -43,6 +44,9 @@ impl Host {
 
         let sockfile_failed = SOCKFILE_FAILED.load(Relaxed);
         w.write(BASE_PATH, "sockfile", "failed", sockfile_failed);
+
+        let incomplete = PROTOCOL_INCOMPLETE.load(Relaxed);
+        w.write(BASE_PATH, "proto", "incomplet", incomplete);
 
         self.snapshot_base(w, secs);
     }
@@ -120,6 +124,10 @@ pub fn decr_task() {
 #[inline]
 pub fn set_sockfile_failed(failed_count: usize) {
     SOCKFILE_FAILED.store(failed_count as i64, Relaxed);
+}
+#[inline]
+pub fn incr_proto_incomplete() {
+    PROTOCOL_INCOMPLETE.fetch_add(1, Relaxed);
 }
 
 // fn unchange_number_metric(region_enable:bool,len_region: u16, port: &str, rsname: &str, region: &str) {
