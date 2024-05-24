@@ -156,7 +156,7 @@ impl CallbackContext {
         parser: &P,
         resp: &mut Command,
     ) {
-        if self.attachment.is_some() && resp.header.rows > 0 {
+        if self.attachment.is_some() {
             let attach = self.attachment.as_mut().expect("attach");
             parser.update_attachment(attach, resp);
         }

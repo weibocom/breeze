@@ -190,10 +190,14 @@ impl Protocol for Vector {
             attach.attach_header(header_data);
         }
 
-        // TODO 先打通，此处的内存操作需要考虑优化 fishermen
-        let header = &response.header;
-        attach.attach_body(response.data().0.to_vec(), header.rows, header.columns);
+        // response是否为空，这里都需要将rsp_ok置为true
         attach.rsp_ok = true;
+
+        // TODO 先打通，此处的内存操作需要考虑优化 fishermen
+        if response.header.rows > 0 {
+            let header = &response.header;
+            attach.attach_body(response.data().0.to_vec(), header.rows, header.columns);
+        }
         attachment.clear();
         attachment.extend(attach.to_vec());
     }
