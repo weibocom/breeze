@@ -74,10 +74,6 @@ impl crate::Request for Request {
     fn set_max_tries(&mut self, max_tries: u8) {
         self.ctx().set_max_tries(max_tries);
     }
-    #[inline]
-    fn first(&self) -> bool {
-        self.ctx().first()
-    }
 }
 impl Request {
     #[inline]
