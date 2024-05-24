@@ -262,6 +262,18 @@ impl RingSlice {
         None
     }
 
+    // 从后往前找
+    #[inline]
+    pub fn rfind_r(&self, r: impl Range, mut f: impl Visit) -> Option<usize> {
+        let (start, end) = r.range(self);
+        for i in (start..end).rev() {
+            if f.check(self[i], i) {
+                return Some(i);
+            }
+        }
+        None
+    }
+
     //找第几个
     #[inline]
     pub fn find_r_n(&self, r: impl Range, mut f: impl Visit, mut num: usize) -> Option<usize> {
