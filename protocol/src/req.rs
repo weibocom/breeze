@@ -72,10 +72,4 @@ pub trait Request:
     fn attachment(&self) -> Option<&Vec<u8>>;
     fn update_attachment<P: crate::Proto>(&mut self, parser: &P, response: &mut Command);
     fn set_max_tries(&mut self, max_tries: u8);
-    // 重试时上次响应是否成功
-    // fn retry_rsp_ok(&self) -> bool {
-    //     false
-    // }
-    // 是否为首次请求，一个请求需要反复执行时，首次请求为true，其他为false。
-    fn first(&self) -> bool;
 }
