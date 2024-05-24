@@ -82,11 +82,19 @@ impl Redis {
         match data.at(0) {
             b'-' | b':' | b'+' => data.line(oft)?,
             b'$' => *oft += data.num_of_string(oft)? + 2,
-            b'*' => data.skip_all_bulk(oft)?,
+            b'*' => {
+                let ctx = packet::transmute(s.context());
+                data.skip_multibulks(oft, &mut ctx.multi_bulks)?
+            }
             _ => return Err(RedisError::RespInvalid.into()),
         }
 
         Ok((*oft <= data.len()).then(|| Command::from_ok(s.take(*oft))))
+    }
+    #[inline(always)]
+    fn maybe_left_bytes<S: Stream>(&self, s: &mut S) -> usize {
+        let ctx: RequestContext = s.context().into();
+        ctx.multi_bulks.maybe_left_bytes()
     }
 }
 
@@ -129,7 +137,8 @@ impl Protocol for Redis {
             Err(Error::ProtocolIncomplete) => {
                 //assert!(oft + 3 >= data.len(), "oft:{} => {:?}", oft, data.slice());
                 if oft > data.len() {
-                    data.reserve(oft - data.len());
+                    let left = self.maybe_left_bytes(data);
+                    data.reserve((oft - data.len()).max(left));
                 }
 
                 Ok(None)
