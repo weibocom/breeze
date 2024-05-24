@@ -77,7 +77,7 @@ where
             let mut more = false;
             let mut attach = if self.strategist.more() && req.attachment().is_some() {
                 let attach = Attachment::from(req.attachment().unwrap().as_ref());
-                more = attach.has_rsp;
+                more = attach.rsp_ok;
                 Some(attach)
             } else {
                 None
@@ -88,7 +88,7 @@ where
                     let vcmd = parse_vector_detail(**req.origin_data(), req.flag())?;
                     //重新发送后，视作新的请求，重置响应和runs
                     let attach = attach.as_mut().unwrap();
-                    attach.has_rsp = false;
+                    attach.rsp_ok = false;
                     req.attach(attach.to_vec());
 
                     let ctx = req.ctx_mut();
