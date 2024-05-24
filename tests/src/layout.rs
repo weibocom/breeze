@@ -30,7 +30,7 @@ fn checkout_basic() {
         size_of::<protocol::Context>(),
         size_of::<protocol::kv::Context>()
     );
-    assert_eq!(size_of::<protocol::StreamContext>(), 16);
+    assert_eq!(size_of::<protocol::StreamContext>(), 24);
     assert_eq!(
         size_of::<protocol::StreamContext>(),
         size_of::<protocol::redis::RequestContext>()

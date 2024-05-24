@@ -389,7 +389,7 @@ pub(super) struct ResponseContext {
     pub(super) status: HandShakeStatus,
     pub status_flags: StatusFlags,
     pub capability_flags: CapabilityFlags,
-    _ignore: [u8; 8],
+    _ignore: [u8; 16],
 }
 
 impl From<&mut StreamContext> for &mut ResponseContext {
