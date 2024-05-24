@@ -5,8 +5,8 @@ use chrono::{Datelike, NaiveDate};
 use chrono_tz::Tz;
 use core::fmt::Write;
 use ds::RingSlice;
+use protocol::kv::Strategy;
 use protocol::Error;
-use protocol::{kv::Strategy, ContextExtra};
 use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]
@@ -72,8 +72,8 @@ impl Batch {
         }
     }
 
-    pub(crate) fn batch(&self, ctx: ContextExtra, _: &protocol::vector::VectorCmd) -> u64 {
-        ctx
+    pub(crate) fn batch(&self, limit: u64, _: &protocol::vector::VectorCmd) -> u64 {
+        limit
     }
 }
 

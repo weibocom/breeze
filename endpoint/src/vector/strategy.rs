@@ -3,7 +3,7 @@ use std::fmt::Write;
 pub use crate::kv::strategy::Postfix;
 use chrono::NaiveDate;
 use ds::RingSlice;
-use protocol::{ContextExtra, Result};
+use protocol::Result;
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
@@ -115,10 +115,10 @@ impl protocol::vector::Strategy for Strategist {
             Strategist::Batch(inner) => inner.write_database_table(buf, date, hash),
         }
     }
-    fn batch(&self, ctx: ContextExtra, vcmd: &protocol::vector::VectorCmd) -> u64 {
+    fn batch(&self, limit: u64, vcmd: &protocol::vector::VectorCmd) -> u64 {
         match self {
             Strategist::VectorTime(_) => 0,
-            Strategist::Batch(inner) => inner.batch(ctx, vcmd),
+            Strategist::Batch(inner) => inner.batch(limit, vcmd),
         }
     }
 }

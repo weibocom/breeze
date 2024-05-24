@@ -1,14 +1,12 @@
 use bincode::{config, Decode, Encode};
-use chrono::{Date, Datelike, Local};
 
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct Attachment {
-    // 查询的偏移位置
-    offset: u16,
     // 待查询数量，不能超过u16::MAX
-    pub(crate) left_count: u16,
+    pub left_count: u16,
     // 当前查询的时间游标，一般是年月，like：202405/2405
-    cursor: YearMonth,
+    //本轮是否有响应
+    pub has_rsp: bool,
     // header，*2 + column names
     header: Vec<u8>,
     body: Vec<Vec<u8>>,
@@ -16,47 +14,15 @@ pub struct Attachment {
     body_token_count: u16,
 }
 
-/// 年月
-#[derive(Debug, Clone, Encode, Decode)]
-struct YearMonth {
-    year: u16,
-    month: u8,
-}
-
-impl From<Date<Local>> for YearMonth {
-    fn from(date: Date<Local>) -> Self {
-        let year = date.year();
-        let month = date.month();
-        assert!(year >= 2009 && year < 2100, "kvector date:{}", date);
-
-        YearMonth {
-            year: year as u16,
-            month: month as u8,
-        }
-    }
-}
-
 impl Attachment {
     #[inline]
-    pub fn new(offset: u16, count: u16) -> Self {
+    pub fn new(count: u16) -> Self {
         Attachment {
-            offset,
             left_count: count,
-            cursor: Local::today().into(),
             header: Vec::with_capacity(8),
             body: Vec::with_capacity(count as usize),
             body_token_count: 0,
-        }
-    }
-
-    /// 回滚一个月，回滚方式：减掉当前月的天数，得到上个月的最后一天。
-    #[inline]
-    pub(crate) fn roll_back_one_month(&mut self) {
-        if self.cursor.month > 1 {
-            self.cursor.month -= 1;
-        } else {
-            self.cursor.month = 12;
-            self.cursor.year -= 1;
+            has_rsp: false,
         }
     }
 
@@ -78,7 +44,7 @@ impl Attachment {
     pub fn attach_body(&mut self, body_data: Vec<u8>, rows: u16, columns: u16) {
         self.body.push(body_data);
         self.body_token_count += rows * columns;
-        self.left_count.wrapping_sub(rows);
+        self.left_count = self.left_count.wrapping_sub(rows);
     }
 
     #[inline]
