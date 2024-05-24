@@ -193,6 +193,7 @@ impl Protocol for Vector {
         // TODO 先打通，此处的内存操作需要考虑优化 fishermen
         let header = &response.header;
         attach.attach_body(response.data().0.to_vec(), header.rows, header.columns);
+        attach.rsp_ok = true;
         attachment.clear();
         attachment.extend(attach.to_vec());
     }
