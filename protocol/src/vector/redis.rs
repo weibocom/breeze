@@ -1,5 +1,3 @@
-use self::attachment::Attachment;
-
 use super::{command::get_cfg, flager::KvFlager, *};
 
 use crate::{Flag, Packet, Result};
@@ -7,7 +5,6 @@ use ds::RingSlice;
 
 pub(crate) const FIELD_BYTES: &'static [u8] = b"FIELD";
 pub(crate) const KVECTOR_SEPARATOR: u8 = b',';
-pub(crate) const DEFAULT_QUERY_COUNT: u16 = 15;
 
 /// 根据parse的结果，此处进一步获得kvector的detail/具体字段信息，以便进行sql构建
 pub fn parse_vector_detail(cmd: RingSlice, flag: &Flag) -> crate::Result<VectorCmd> {
@@ -36,24 +33,6 @@ pub fn parse_vector_detail(cmd: RingSlice, flag: &Flag) -> crate::Result<VectorC
     validate_cmd(&vcmd, vcmd.cmd)?;
 
     Ok(vcmd)
-}
-
-/// 根据VectorCmd构建attachment：
-///     1. 第一次目前只需要偏移位置和数量，滚动月表；
-///     2. 第二次及之后，还需要保留解析出来的响应；
-#[inline]
-pub fn build_attachment(vcmd: &VectorCmd) -> Attachment {
-    // 如果没有count/limit，设置默认值
-    if vcmd.limit.limit.len() > 0 {
-        assert!(vcmd.limit.offset.len() > 0, "vcmd:{:?}", vcmd);
-        let offset = vcmd.limit.offset.str_num(..) as u16;
-        let count = vcmd.limit.limit.str_num(..) as u16;
-        Attachment::new(offset, count)
-    } else {
-        // 如果limit不存在，offset也应该不存在，此时使用默认值
-        assert_eq!(vcmd.limit.offset.len(), 0, "vcmd:{:?}", vcmd);
-        Attachment::new(0, DEFAULT_QUERY_COUNT)
-    }
 }
 
 #[inline]

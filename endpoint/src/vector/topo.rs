@@ -6,7 +6,8 @@ use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::{ContextStatus, MysqlBuilder};
-use protocol::vector::redis::{build_attachment, parse_vector_detail};
+use protocol::vector::attachment::Attachment;
+use protocol::vector::redis::parse_vector_detail;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -73,13 +74,22 @@ where
     fn send(&self, mut req: Self::Item) {
         let shard = (|| -> Result<&Shard<E>, protocol::Error> {
             //需要请求多轮的场景处理逻辑看作是一次新的请求，除外出错重试
-            // let more = self.strategist.more() && req.retry_rsp_ok();
-            // 先打通
-            let more = self.strategist.more() && !req.first();
+            let mut more = false;
+            let mut attach = if self.strategist.more() && req.attachment().is_some() {
+                let attach = Attachment::from(req.attachment().unwrap().as_ref());
+                more = attach.has_rsp;
+                Some(attach)
+            } else {
+                None
+            };
             let (year, shard_idx) = if req.ctx_mut().runs == 0 || more {
                 let (vcmd, date, shard_idx) = if more {
                     //非第一轮请求
                     let vcmd = parse_vector_detail(**req.origin_data(), req.flag())?;
+                    //重新发送后，视作新的请求，重置响应和runs
+                    let attach = attach.as_mut().unwrap();
+                    attach.has_rsp = false;
+                    req.attach(attach.to_vec());
 
                     let ctx = req.ctx_mut();
                     let date = self.strategist.get_next_date(ctx.year, ctx.month);
@@ -87,13 +97,18 @@ where
                     (vcmd, date, ctx.shard_idx)
                 } else {
                     let vcmd = parse_vector_detail(***req, req.flag())?;
-                    if self.strategist.more() {
+                    if self.strategist.more() && req.operation().is_retrival() {
+                        assert!(attach.is_none());
+                        // 对于需要重复查询不同table的场景，目前暂时先设为最多6次，后续需要配置si表来调整逻辑
+                        req.set_max_tries(6);
+                        req.retry_on_rsp_notok(true);
                         // 批量获取场景必须提供limit
                         let Some(limit) = vcmd.limit() else {
                             return Err(protocol::Error::RequestProtocolInvalid);
                         };
                         //需要在buildsql之前设置
-                        *req.extra_ctx_mut() = limit as u64;
+                        attach = Some(Attachment::new(limit as u16));
+                        req.attach(attach.as_mut().unwrap().to_vec());
                     }
                     //定位年库
                     let date = self.strategist.get_date(&vcmd.keys)?;
@@ -103,22 +118,12 @@ where
                     (vcmd, date, shard_idx as u16)
                 };
 
-                // 首次访问，如果协议、策略层面需要，设置attachment，后续在解析响应后更新
-                if self.strategist.more()
-                    && req.operation().is_retrival()
-                    && req.attachment().is_none()
-                {
-                    // 对于需要重复查询不同table的场景，目前暂时先设为最多6次，后续需要配置si表来调整逻辑
-                    req.set_max_tries(6);
-                    req.retry_on_rsp_notok(true);
-                    req.attach(build_attachment(&vcmd).to_vec());
-                }
-
                 req.ctx_mut().year = date.year() as u16;
                 req.ctx_mut().month = date.month() as u8;
 
+                let limit = attach.map_or(0, |a| a.left_count);
                 let vector_builder =
-                    SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist, *req.extra_ctx())?;
+                    SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist, limit as u64)?;
                 let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
                 req.reshape(MemGuard::from_vec(cmd));
 

@@ -13,8 +13,8 @@ use std::fmt::Write;
 use std::mem;
 
 use crate::{
-    Command, Commander, ContextExtra, Error, HashedCommand, Metric, MetricItem, Protocol,
-    RequestProcessor, Result, Stream, Writer,
+    Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
+    Result, Stream, Writer,
 };
 use chrono::NaiveDate;
 use ds::RingSlice;
@@ -404,5 +404,5 @@ pub trait Strategy {
     //todo 通过代理类型实现
     fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_>;
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64);
-    fn batch(&self, ctx: ContextExtra, vcmd: &VectorCmd) -> u64;
+    fn batch(&self, limit: u64, vcmd: &VectorCmd) -> u64;
 }

@@ -3,7 +3,7 @@ use std::fmt::{Display, Write};
 use crate::kv::common::Command;
 use crate::kv::{MysqlBinary, VectorSqlBuilder};
 use crate::vector::{CommandType, Condition, Field, VectorCmd};
-use crate::{ContextExtra, Error, Result};
+use crate::{Error, Result};
 use chrono::NaiveDate;
 use ds::RingSlice;
 
@@ -157,7 +157,7 @@ impl<'a> Display for UpdateFields<'a> {
     }
 }
 
-struct KeysAndCondsAndOrderAndLimit<'a, S>(&'a S, &'a VectorCmd, ContextExtra);
+struct KeysAndCondsAndOrderAndLimit<'a, S>(&'a S, &'a VectorCmd, u64);
 impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self(
@@ -216,7 +216,7 @@ pub struct SqlBuilder<'a, S> {
     hash: i64,
     date: NaiveDate,
     strategy: &'a S,
-    extra: ContextExtra,
+    limit: u64,
 }
 
 impl<'a, S: Strategy> SqlBuilder<'a, S> {
@@ -225,7 +225,7 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
         hash: i64,
         date: NaiveDate,
         strategy: &'a S,
-        extra: ContextExtra,
+        limit: u64,
     ) -> Result<Self> {
         if vcmd.keys.len() != strategy.keys().len() {
             Err(Error::RequestProtocolInvalid)
@@ -235,7 +235,7 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
                 hash,
                 date,
                 strategy,
-                extra,
+                limit,
             })
         }
     }
@@ -302,7 +302,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     "select {} from {} where {}",
                     Select(self.vcmd.fields.get(0)),
                     Table(self.strategy, &self.date, self.hash),
-                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.extra),
+                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
                 );
             }
             CommandType::VCard => {
@@ -310,7 +310,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     buf,
                     "select count(*) from {} where {}",
                     Table(self.strategy, &self.date, self.hash),
-                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.extra),
+                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
                 );
             }
             CommandType::VAdd => {
@@ -328,7 +328,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     "update {} set {} where {}",
                     Table(self.strategy, &self.date, self.hash),
                     UpdateFields(&self.vcmd.fields),
-                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.extra),
+                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
                 );
             }
             CommandType::VDel => {
@@ -336,7 +336,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     buf,
                     "delete from {} where {}",
                     Table(self.strategy, &self.date, self.hash),
-                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.extra),
+                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
                 );
             }
             _ => {
