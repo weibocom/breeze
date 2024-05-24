@@ -5,8 +5,8 @@ pub struct Attachment {
     // 待查询数量，不能超过u16::MAX
     pub left_count: u16,
     // 当前查询的时间游标，一般是年月，like：202405/2405
-    //本轮是否有响应
-    pub has_rsp: bool,
+    //本轮响应是否成功
+    pub rsp_ok: bool,
     // header，*2 + column names
     header: Vec<u8>,
     body: Vec<Vec<u8>>,
@@ -22,7 +22,7 @@ impl Attachment {
             header: Vec::with_capacity(8),
             body: Vec::with_capacity(count as usize),
             body_token_count: 0,
-            has_rsp: false,
+            rsp_ok: false,
         }
     }
 
