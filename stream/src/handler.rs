@@ -39,6 +39,7 @@ where
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         debug_assert!(self.num.check_pending(self.pending.len()), "{:?}", self);
+        metrics::incr_polled();
         let me = &mut *self;
 
         let request = me.poll_request(cx)?;
