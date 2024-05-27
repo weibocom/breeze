@@ -64,7 +64,7 @@ fn msgque_write() {
 fn msgque_read() {
     let mq_client = mc_get_text_conn(MQ);
 
-    const COUNT: i32 = 5;
+    const COUNT: i32 = 1000;
 
     let key = "k2";
     let mut read_count = 0;
@@ -95,6 +95,52 @@ fn msgque_read() {
             break;
         }
     }
+}
+
+#[test]
+fn msgque_strategy_check() {
+    let mq_client = mc_get_text_conn(MQ);
+
+    let key = "k2";
+    let count = 100;
+    const QSIZES: [usize; 1] = [512];
+
+    for i in 0..count {
+        let msg_len = QSIZES[i % QSIZES.len()] * 8 / 10;
+        let value = build_msg(msg_len);
+        println!("will set mcq msg {} with len:{}", i, value.len());
+        mq_client.set(key, value, 0).unwrap();
+    }
+
+    println!("mq write {} msgs done", count);
+    let mut read_count = 0;
+    let mut hits = 0;
+    loop {
+        let msg: Option<String> = mq_client.get(key).unwrap();
+        read_count += 1;
+
+        if msg.is_some() {
+            hits += 1;
+            println!(
+                "mq len/{}, hits:{}/{}",
+                msg.unwrap().len(),
+                hits,
+                read_count
+            );
+            if hits >= count {
+                println!("read all mq msgs count:{}/{}", hits, read_count);
+                break;
+            }
+        }
+    }
+
+    let hits_percent = (hits as f64) / (read_count as f64);
+    assert!(
+        hits_percent >= 0.9,
+        "check read strategy:{}/{}",
+        hits,
+        read_count
+    );
 }
 
 /// 构建所需长度的msg
