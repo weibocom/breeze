@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicI64, Ordering::*};
 static TASK_NUM: AtomicI64 = AtomicI64::new(0);
 static SOCKFILE_FAILED: AtomicI64 = AtomicI64::new(0);
 static PROTOCOL_INCOMPLETE: AtomicI64 = AtomicI64::new(0);
+static POLLED: AtomicI64 = AtomicI64::new(0);
 
 pub struct Host {
     heap: Option<ds::HeapStats>, // 累积分配的堆内存
@@ -47,6 +48,8 @@ impl Host {
 
         let incomplete = PROTOCOL_INCOMPLETE.load(Relaxed);
         w.write(BASE_PATH, "proto", "incomplet", incomplete);
+        let polled = POLLED.load(Relaxed);
+        w.write(BASE_PATH, "poll", "incomplet", polled);
 
         self.snapshot_base(w, secs);
     }
@@ -129,7 +132,10 @@ pub fn set_sockfile_failed(failed_count: usize) {
 pub fn incr_proto_incomplete() {
     PROTOCOL_INCOMPLETE.fetch_add(1, Relaxed);
 }
-
+#[inline]
+pub fn incr_polled() {
+    POLLED.fetch_add(1, Relaxed);
+}
 // fn unchange_number_metric(region_enable:bool,len_region: u16, port: &str, rsname: &str, region: &str) {
 // pub fn resource_num_metric(source: &str, namespace: &str, bip: &str, n: u16) {
 //     let path = crate::Path::new(vec![source, namespace, bip]);
