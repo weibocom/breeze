@@ -33,6 +33,8 @@ impl Protocol for MsgQue {
         process: &mut P,
     ) -> Result<()> {
         let data = stream.slice();
+        log::debug!("+++ will parse req:{}", data);
+
         let mut oft = 0;
         while let Some(mut lfcr) = data.find_lf_cr(oft) {
             let head4 = data.u32_le(oft);
@@ -72,6 +74,7 @@ impl Protocol for MsgQue {
     #[inline]
     fn parse_response<S: Stream>(&self, stream: &mut S) -> Result<Option<Command>> {
         let data = stream.slice();
+        log::debug!("+++ will parse rsp:{}", data);
         let Some(mut lfcr) = data.find_lf_cr(0) else {
             return Ok(None);
         };
