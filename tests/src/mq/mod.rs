@@ -5,6 +5,7 @@ use endpoint::msgque::strategy::Fixed;
 use endpoint::msgque::strategy::RoundRobbin;
 use endpoint::msgque::ReadStrategy;
 use endpoint::msgque::WriteStrategy;
+use rand::random;
 
 mod protocol;
 /// 轮询读取40次，预期把每个节点都读一遍
@@ -15,10 +16,12 @@ fn mq_read_strategy() {
 
     let mut count = 0;
     let mut readed = HashSet::with_capacity(READER_COUNT);
+    let mut last_idx = Some(random());
     loop {
         count += 1;
-        let idx = rstrategy.get_read_idx();
+        let idx = rstrategy.get_read_idx(last_idx);
         readed.insert(idx);
+        last_idx = Some(idx);
 
         if readed.len() == READER_COUNT {
             // println!("read strategy loop all: {}/{}", count, readed.len());

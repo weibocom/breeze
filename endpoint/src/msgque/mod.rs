@@ -61,6 +61,7 @@ impl Context {
         Some(idx as usize)
     }
 
+    /// 记录本次qid，retry时需要
     #[inline]
     fn update_qid(&mut self, qid: u16) {
         let lower = self.ctx as u8;
@@ -81,7 +82,7 @@ pub trait WriteStrategy {
 
 pub trait ReadStrategy {
     fn new(reader_len: usize) -> Self;
-    fn get_read_idx(&self) -> usize;
+    fn get_read_idx(&self, last_idx: Option<usize>) -> usize;
 }
 
 #[derive(Debug, Clone, Default)]
