@@ -102,10 +102,9 @@ where
                         // 对于需要重复查询不同table的场景，目前暂时先设为最多6次，后续需要配置si表来调整逻辑
                         req.set_max_tries(6);
                         req.retry_on_rsp_notok(true);
-                        // 批量获取场景必须提供limit
-                        let Some(limit) = vcmd.limit() else {
-                            return Err(protocol::Error::RequestProtocolInvalid);
-                        };
+                        let limit = vcmd.limit();
+                        assert!(limit > 0, "{limit}");
+
                         //需要在buildsql之前设置
                         attach = Some(Attachment::new(limit as u16));
                         req.attach(attach.as_mut().unwrap().to_vec());

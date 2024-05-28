@@ -300,6 +300,8 @@ pub(crate) const COND_ORDER: &[u8] = b"ORDER";
 pub(crate) const COND_LIMIT: &[u8] = b"LIMIT";
 pub(crate) const COND_GROUP: &[u8] = b"GROUP";
 
+const DEFAULT_LIMIT: usize = 15;
+
 #[derive(Debug, Clone, Default)]
 pub struct Condition {
     pub field: RingSlice,
@@ -355,8 +357,12 @@ pub struct VectorCmd {
 }
 
 impl VectorCmd {
-    pub fn limit(&self) -> Option<usize> {
-        self.limit.limit.try_str_num(..)
+    #[inline(always)]
+    pub fn limit(&self) -> usize {
+        match self.limit.limit.try_str_num(..) {
+            Some(limit) => limit,
+            None => DEFAULT_LIMIT,
+        }
     }
 }
 
