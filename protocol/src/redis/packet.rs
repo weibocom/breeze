@@ -557,7 +557,7 @@ impl Packet {
         if *bulks == 0 {
             *bulks = self.num_of_bulks(oft)?;
         }
-        if *bulks > 100 {
+        if *bulks > 1000 {
             metrics::incr_proto_incomplete();
         }
         self.skip_multibulks_inner(oft, bulks)
