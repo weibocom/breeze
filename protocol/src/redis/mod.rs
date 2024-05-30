@@ -83,8 +83,16 @@ impl Redis {
             b'-' | b':' | b'+' => data.line(oft)?,
             b'$' => *oft += data.num_of_string(oft)? + 2,
             b'*' => {
-                let ctx = packet::transmute(s.context());
-                data.skip_multibulks(oft, &mut ctx.multi_bulks)?
+                let ctx = s.context();
+                let bulks = (&ctx[0..8]).as_ptr() as *mut usize;
+                let offset = (&ctx[8..16]).as_ptr() as *mut usize;
+                let bulks = unsafe { &mut *bulks };
+                let offset = unsafe { &mut *offset };
+                let _ = data.skip_multibulks(offset, bulks)?;
+                *oft = *offset;
+                if *bulks == 0 {
+                    (*offset > 0).then(|| *offset = 0);
+                }
             }
             _ => return Err(RedisError::RespInvalid.into()),
         }
@@ -92,9 +100,10 @@ impl Redis {
         Ok((*oft <= data.len()).then(|| Command::from_ok(s.take(*oft))))
     }
     #[inline(always)]
-    fn maybe_left_bytes<S: Stream>(&self, s: &mut S) -> usize {
-        let ctx: RequestContext = s.context().into();
-        ctx.multi_bulks.maybe_left_bytes()
+    fn left_bytes<S: Stream>(&self, s: &mut S) -> usize {
+        let ctx = s.context();
+        let bulks = (&ctx[0..8]).as_ptr() as *const usize;
+        (unsafe { *bulks }) * 64
     }
 }
 
@@ -135,10 +144,9 @@ impl Protocol for Redis {
         match self.parse_response_inner(data, &mut oft) {
             Ok(cmd) => Ok(cmd),
             Err(Error::ProtocolIncomplete) => {
-                metrics::incr_proto_incomplete();
                 //assert!(oft + 3 >= data.len(), "oft:{} => {:?}", oft, data.slice());
                 if oft > data.len() {
-                    let left = self.maybe_left_bytes(data);
+                    let left = self.left_bytes(data);
                     data.reserve((oft - data.len()).max(left));
                 }
 

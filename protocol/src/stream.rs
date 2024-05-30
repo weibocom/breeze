@@ -5,7 +5,7 @@ pub trait AsyncBufRead {
     fn poll_recv(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<crate::Result<()>>;
 }
 
-pub type StreamContext = [u8; 24];
+pub type StreamContext = [u8; 16];
 
 pub trait BufRead {
     fn len(&self) -> usize;
