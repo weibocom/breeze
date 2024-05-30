@@ -21,43 +21,6 @@ pub struct RequestContext {
     pub is_reserved_hash: bool,
     //16
     pub reserved_hash: i64,
-    pub multi_bulks: MultiBulk,
-}
-
-// 解析Bulk
-#[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MultiBulk {
-    left_bulk: u32, // 待解析bulk数量
-    pos: u32,       // 当前bulk待解析的起始位置
-}
-
-impl MultiBulk {
-    #[inline]
-    pub fn parse_multi(&mut self, new_bulks: usize, pos: usize) {
-        match self.left_bulk {
-            0 => self.left_bulk = new_bulks as u32,
-            _ => self.left_bulk += new_bulks as u32 - 1,
-        };
-        self.pos = pos as u32;
-    }
-    #[inline]
-    pub fn parse_bulk(&mut self, pos: usize) {
-        (self.left_bulk > 0).then(|| self.left_bulk -= 1);
-        self.pos = pos as u32;
-    }
-    #[inline]
-    pub fn pos(&self) -> usize {
-        self.pos as usize
-    }
-    #[inline]
-    pub fn maybe_left_bytes(&self) -> usize {
-        self.left_bulk as usize * 64
-    }
-}
-#[inline]
-pub fn transmute(ctx: &mut StreamContext) -> &mut RequestContext {
-    unsafe { std::mem::transmute(ctx) }
 }
 
 impl From<&mut StreamContext> for RequestContext {
@@ -589,38 +552,34 @@ impl Packet {
         let bulk_count = self.num_of_bulks(oft)?;
         self.skip_bulk(oft, bulk_count)
     }
-    pub fn skip_multibulks(&self, oft: &mut usize, multi_bulks: &mut MultiBulk) -> Result<()> {
-        if multi_bulks.left_bulk == 0 {
-            let bulk_count = self.num_of_bulks(oft)?;
-            multi_bulks.parse_multi(bulk_count, *oft);
-        } else {
-            *oft = multi_bulks.pos as usize;
+    #[inline]
+    pub fn skip_multibulks(&self, oft: &mut usize, bulks: &mut usize) -> Result<()> {
+        if *bulks == 0 {
+            *bulks = self.num_of_bulks(oft)?;
         }
-        self.skip_multibulks_inner(oft, multi_bulks)
+        if *bulks > 10 {
+            metrics::incr_proto_incomplete();
+        }
+        self.skip_multibulks_inner(oft, bulks)
     }
     #[inline]
-    pub fn skip_multibulks_inner(
-        &self,
-        oft: &mut usize,
-        multi_bulks: &mut MultiBulk,
-    ) -> Result<()> {
-        while multi_bulks.left_bulk > 0 {
+    pub fn skip_multibulks_inner(&self, oft: &mut usize, bulks: &mut usize) -> Result<()> {
+        while *bulks > 0 {
             self.check_onetoken(*oft)?;
             match self.at(*oft) {
                 b'*' => {
-                    let bulk_count = self.num_of_bulks(oft)?;
-                    multi_bulks.parse_multi(bulk_count, *oft);
+                    *bulks += self.num_of_bulks(oft)? - 1;
                 }
                 b'$' => {
                     // 跳过num个字节 + "\r\n" 2个字节
                     *oft += self.num_of_string(oft)? + CRLF_LEN;
-                    multi_bulks.parse_bulk(*oft);
+                    (*bulks > 0).then(|| *bulks -= 1);
                 }
                 b'+' | b':' => {
                     self.line(oft)?;
-                    multi_bulks.parse_bulk(*oft);
+                    (*bulks > 0).then(|| *bulks -= 1);
                 }
-                _ => panic!("unsupport rsp:{:?}, pos: {}/{:?}", self, oft, multi_bulks),
+                _ => panic!("unsupport rsp:{:?}, pos: {}/{:?}", self, oft, bulks),
             }
         }
         Ok(())
