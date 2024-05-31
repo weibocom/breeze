@@ -335,7 +335,6 @@ impl CallbackContext {
     pub fn resp_count(&self) -> u32 {
         self.resp_count
     }
-    /// mrange响应消息行数符合要求后，设置当前请求为last
     #[inline]
     pub fn set_last(&mut self) {
         // todo: 可优化为依据请求数或者响应数量判断可以设置last为true

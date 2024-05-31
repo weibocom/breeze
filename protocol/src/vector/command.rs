@@ -148,7 +148,6 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("vupdate").arity(-2).op(Store).cmd_type(CommandType::VUpdate).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
         Cmd::new("vdel").arity(-2).op(Store).cmd_type(CommandType::VDel).padding(pt[3]).has_key().can_hold_where_condition(),
         Cmd::new("vcard").arity(-2).op(Get).cmd_type(CommandType::VCard).padding(pt[3]).has_key().can_hold_where_condition(),
-        Cmd::new("mrange").arity(-2).op(Get).cmd_type(CommandType::MRange).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
     ] {
         cmds.add_support(c);
     }
@@ -212,7 +211,6 @@ pub enum CommandType {
     VUpdate,
     VDel,
     VCard,
-    MRange,
 
     // // 兼容redisclient而引入的指令
     // Select,
