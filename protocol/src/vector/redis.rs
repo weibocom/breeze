@@ -149,7 +149,6 @@ pub(crate) fn validate_field_name(field_name: RingSlice) -> Result<()> {
 ///   4. vdel： fields必须为空；
 ///   5. vcard：无；
 ///   6. vget：key不能为0
-///   7. mrange: 暂无
 pub(crate) fn validate_cmd(vcmd: &VectorCmd, cmd_type: CommandType) -> Result<()> {
     match cmd_type {
         CommandType::VRange => {
@@ -181,7 +180,7 @@ pub(crate) fn validate_cmd(vcmd: &VectorCmd, cmd_type: CommandType) -> Result<()
                 return Err(crate::Error::RequestInvalidMagic);
             }
         }
-        CommandType::VCard | CommandType::MRange => {}
+        CommandType::VCard => {}
         _ => {
             panic!("unknown kvector cmd:{:?}", vcmd);
         }
