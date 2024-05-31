@@ -84,14 +84,17 @@ impl Redis {
             b'$' => *oft += data.num_of_string(oft)? + 2,
             b'*' => {
                 let ctx = s.context();
-                let bulks = (&ctx[0..8]).as_ptr() as *mut usize;
+                let bulks_total = (&ctx[..4]).as_ptr() as *mut u32;
+                let bulks_left = (&ctx[4..8]).as_ptr() as *mut u32;
                 let offset = (&ctx[8..16]).as_ptr() as *mut usize;
-                let bulks = unsafe { &mut *bulks };
+                let bulks_total = unsafe { &mut *bulks_total };
+                let bulks_left = unsafe { &mut *bulks_left };
                 let offset = unsafe { &mut *offset };
-                let _ = data.skip_multibulks(offset, bulks)?;
+                let _ = data.skip_multibulks(offset, bulks_left, bulks_total)?;
                 *oft = *offset;
-                if *bulks == 0 {
-                    (*offset > 0).then(|| *offset = 0);
+                if *bulks_left == 0 {
+                    *offset = 0;
+                    *bulks_total = 0;
                 }
             }
             _ => return Err(RedisError::RespInvalid.into()),

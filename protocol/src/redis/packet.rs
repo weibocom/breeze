@@ -553,22 +553,31 @@ impl Packet {
         self.skip_bulk(oft, bulk_count)
     }
     #[inline]
-    pub fn skip_multibulks(&self, oft: &mut usize, bulks: &mut usize) -> Result<()> {
+    pub fn skip_multibulks(
+        &self,
+        oft: &mut usize,
+        bulks: &mut u32,
+        bulks_total: &mut u32,
+    ) -> Result<()> {
         if *bulks == 0 {
-            *bulks = self.num_of_bulks(oft)?;
+            *bulks = self.num_of_bulks(oft)? as u32;
+            *bulks_total = *bulks;
         }
-        if *bulks > 1000 {
-            metrics::incr_proto_incomplete();
-        }
-        self.skip_multibulks_inner(oft, bulks)
+        self.skip_multibulks_inner(oft, bulks, bulks_total)
     }
     #[inline]
-    pub fn skip_multibulks_inner(&self, oft: &mut usize, bulks: &mut usize) -> Result<()> {
+    pub fn skip_multibulks_inner(
+        &self,
+        oft: &mut usize,
+        bulks: &mut u32,
+        bulks_total: &mut u32,
+    ) -> Result<()> {
         while *bulks > 0 {
+            (*bulks_total > 8000).then(|| metrics::incr_proto_incomplete());
             self.check_onetoken(*oft)?;
             match self.at(*oft) {
                 b'*' => {
-                    *bulks += self.num_of_bulks(oft)? - 1;
+                    *bulks += self.num_of_bulks(oft)? as u32 - 1;
                 }
                 b'$' => {
                     // 跳过num个字节 + "\r\n" 2个字节
