@@ -550,7 +550,7 @@ impl Packet {
     #[inline]
     pub fn skip_all_bulk(&self, oft: &mut usize) -> Result<()> {
         let bulk_count = self.num_of_bulks(oft)?;
-        if bulk_count > 1000 {
+        if bulk_count > 8000 {
             metrics::incr_proto_incomplete();
         }
         self.skip_bulk(oft, bulk_count)
