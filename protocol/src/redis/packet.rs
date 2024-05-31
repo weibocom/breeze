@@ -550,21 +550,20 @@ impl Packet {
     #[inline]
     pub fn skip_all_bulk(&self, oft: &mut usize) -> Result<()> {
         let bulk_count = self.num_of_bulks(oft)?;
-        if bulk_count > 8000 {
-            metrics::incr_proto_incomplete();
-        }
         self.skip_bulk(oft, bulk_count)
     }
 
     #[inline]
     pub fn skip_bulk(&self, oft: &mut usize, bulk_count: usize) -> Result<()> {
         let mut bulk_count = bulk_count;
+        let bulk_total = bulk_count;
         // 使用stack实现递归, 通常没有递归，可以初始化这Empty
         let mut levels = Vec::new();
         while bulk_count > 0 || levels.len() > 0 {
             if bulk_count == 0 {
                 bulk_count = levels.pop().expect("levels is empty");
             }
+            (bulk_total > 8000).then(|| metrics::incr_proto_incomplete());
             self.check_onetoken(*oft)?;
             match self.at(*oft) {
                 b'*' => {
