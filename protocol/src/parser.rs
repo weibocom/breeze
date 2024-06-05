@@ -129,6 +129,8 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         1_u8
     }
 
+    /// TODO 去掉该策略，status的ok、不ok只表示rsp本身是否是ok的；
+    /// 额外增加一个retry属性，表示在status not ok时，是否进行重试
     /// 在收到的rsp为notok时，是否重试，默认都不重试；
     /// precondition：得收到rsp，且rsp为notok；没收到响应，不属于该策略的处理范围
     #[inline]
