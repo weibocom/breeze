@@ -41,7 +41,7 @@ impl Protocol for Uuid {
         if data.u32_le(0) != u32::from_le_bytes(*b"VALU") {
             return Err(crate::Error::UnexpectedData);
         }
-        return Ok(Some(Command::from_ok(stream.take(oft))));
+        return Ok(Some(Command::from_ok(false, stream.take(oft))));
     }
 
     fn write_response<C, W, M, I>(
