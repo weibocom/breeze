@@ -19,6 +19,7 @@ pub struct Handler<'r, Req, P, S> {
     s: S,
     parser: P,
     rtt: Metric,
+    rtt_ext: Metric,
     host_metric: HostMetric,
 
     num: Number,
@@ -61,12 +62,14 @@ where
     pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, path: Path) -> Self {
         data.enable();
         let rtt = path.rtt("req");
+        let rtt_ext = path.rtt("req_ext");
         Self {
             data,
             pending: VecDeque::with_capacity(31),
             s,
             parser,
             rtt,
+            rtt_ext,
             host_metric: HostMetric::from(path),
             num: Number::default(),
             req_buf: Vec::with_capacity(4),
@@ -136,7 +139,11 @@ where
                 let (req, start) = self.pending.pop_front().expect("take response");
                 self.num.rx();
                 // 统计请求耗时。
-                self.rtt += start.elapsed();
+                let elapsed = start.elapsed();
+                self.rtt += elapsed;
+                if cmd.long_array() {
+                    self.rtt_ext += elapsed;
+                }
                 self.parser.check(&*req, &cmd);
                 req.on_complete(cmd);
                 continue;

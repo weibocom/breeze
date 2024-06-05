@@ -78,6 +78,7 @@ impl Redis {
         let data: Packet = s.slice().into();
         log::debug!("+++ will parse redis rsp:{:?}", data);
         data.check_onetoken(*oft)?;
+        let mut long_array = false;
 
         match data.at(0) {
             b'-' | b':' | b'+' => data.line(oft)?,
@@ -93,7 +94,7 @@ impl Redis {
                 let _ = data.skip_multibulks(offset, bulks_left, bulks_total)?;
                 *oft = *offset;
                 if *bulks_left == 0 {
-                    (*bulks_total > 8000).then(|| metrics::incr_proto_incomplete());
+                    (*bulks_total > 8000).then(|| long_array = true);
                     *bulks_total = 0;
                     *offset = 0;
                 }
@@ -101,7 +102,7 @@ impl Redis {
             _ => return Err(RedisError::RespInvalid.into()),
         }
 
-        Ok((*oft <= data.len()).then(|| Command::from_ok(s.take(*oft))))
+        Ok((*oft <= data.len()).then(|| Command::from_ok(long_array, s.take(*oft))))
     }
     #[inline(always)]
     fn left_bytes<S: Stream>(&self, s: &mut S) -> usize {

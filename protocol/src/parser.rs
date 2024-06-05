@@ -141,6 +141,7 @@ pub trait RequestProcessor {
 
 pub struct Command {
     ok: bool,
+    long_array: bool,
     cmd: MemGuard,
 }
 
@@ -156,14 +157,26 @@ pub struct HashedCommand {
 impl Command {
     #[inline]
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
-        Self { ok, cmd }
+        Self {
+            ok,
+            long_array: false,
+            cmd,
+        }
     }
-    pub fn from_ok(cmd: ds::MemGuard) -> Self {
-        Self::from(true, cmd)
+    pub fn from_ok(long_array: bool, cmd: ds::MemGuard) -> Self {
+        Self {
+            ok: true,
+            long_array,
+            cmd,
+        }
     }
     #[inline]
     pub fn ok(&self) -> bool {
         self.ok
+    }
+    #[inline]
+    pub fn long_array(&self) -> bool {
+        self.long_array
     }
 }
 impl std::ops::Deref for Command {
