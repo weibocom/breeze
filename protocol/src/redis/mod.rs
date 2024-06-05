@@ -93,8 +93,9 @@ impl Redis {
                 let _ = data.skip_multibulks(offset, bulks_left, bulks_total)?;
                 *oft = *offset;
                 if *bulks_left == 0 {
-                    *offset = 0;
+                    (*bulks_total > 8000).then(|| metrics::incr_proto_incomplete());
                     *bulks_total = 0;
+                    *offset = 0;
                 }
             }
             _ => return Err(RedisError::RespInvalid.into()),
