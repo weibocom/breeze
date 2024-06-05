@@ -38,10 +38,10 @@ pub struct CallbackContext {
     pub(crate) try_next: bool,   // 请求失败后，topo层面是否允许重试
     pub(crate) write_back: bool, // 请求结束后，是否需要回写。
     // TODO 收拢try权限到协议context层面，读写都在本地进行，待讨论 fishermen
-    retry_on_rsp_notok: bool, // 有响应且响应不ok时，协议层面是否允许重试
-    max_tries: OnceCell<u8>,  // 最大重试次数
-    first: bool,              // 当前请求是否是所有子请求的第一个
-    last: bool,               // 当前请求是否是所有子请求的最后一个
+    // retry_on_rsp_notok: bool, // 有响应且响应不ok时，协议层面是否允许重试
+    max_tries: OnceCell<u8>, // 最大重试次数
+    first: bool,             // 当前请求是否是所有子请求的第一个
+    last: bool,              // 当前请求是否是所有子请求的最后一个
     tries: AtomicU8,
     request: HashedCommand,
     response: MaybeUninit<Command>,
@@ -72,7 +72,7 @@ impl CallbackContext {
             inited: AtomicBool::new(false),
             async_mode: false,
             try_next: false,
-            retry_on_rsp_notok: false,
+            // retry_on_rsp_notok: false,
             max_tries: OnceCell::new(),
             write_back: false,
             request: req,
@@ -147,10 +147,11 @@ impl CallbackContext {
                 if unsafe { self.unchecked_response().ok() } {
                     return false;
                 }
+                // TODO 去掉retry_on_rsp_notok，调整逻辑，待测试OK后再清理 fishermen
                 //有响应并且!ok，配置了!retry_on_rsp_notok，不需要重试，比如mysql
-                if !self.retry_on_rsp_notok {
-                    return false;
-                }
+                // if !self.retry_on_rsp_notok {
+                //     return false;
+                // }
             }
             let max_tries = *self.max_tries.get().expect("max tries");
             self.try_next && self.tries.fetch_add(1, Release) < max_tries
@@ -300,6 +301,7 @@ impl CallbackContext {
         self.max_tries
             .set(parser.max_tries(self.request.operation()))
             .expect("retry");
+        // TODO ok语意调整,不retry；协议是否正确用扩展的flag来表示 fishermer
         self.retry_on_rsp_notok = parser.retry_on_rsp_notok(&self.request);
         self
     }
