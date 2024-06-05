@@ -573,7 +573,7 @@ impl Packet {
         bulks_total: &mut u32,
     ) -> Result<()> {
         while *bulks > 0 {
-            (*bulks_total > 8000).then(|| metrics::incr_proto_incomplete());
+            (*bulks_total > 1000).then(|| metrics::incr_proto_incomplete());
             self.check_onetoken(*oft)?;
             match self.at(*oft) {
                 b'*' => {
