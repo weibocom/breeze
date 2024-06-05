@@ -563,7 +563,7 @@ impl Packet {
             if bulk_count == 0 {
                 bulk_count = levels.pop().expect("levels is empty");
             }
-            (bulk_total > 8000).then(|| metrics::incr_proto_incomplete());
+            (bulk_total > 1000).then(|| metrics::incr_proto_incomplete());
             self.check_onetoken(*oft)?;
             match self.at(*oft) {
                 b'*' => {

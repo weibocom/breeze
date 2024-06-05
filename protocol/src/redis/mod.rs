@@ -85,7 +85,7 @@ impl Redis {
             b'$' => *oft += data.num_of_string(oft)? + 2,
             b'*' => {
                 let bulk_count = data.num_of_bulks(oft)?;
-                (bulk_count > 8000).then(|| long_array = true);
+                (bulk_count > 1000).then(|| long_array = true);
                 data.skip_bulk(oft, bulk_count)?
             }
             _ => return Err(RedisError::RespInvalid.into()),
