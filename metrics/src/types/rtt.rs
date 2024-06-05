@@ -2,8 +2,8 @@ use ds::time::Duration;
 
 use super::{base::Adder, IncrTo, ItemData};
 use crate::ItemWriter as Writer;
-pub const MAX: Duration = Duration::from_millis(30);
-const SLOW_US: i64 = Duration::from_millis(100).as_micros() as i64;
+pub const MAX: Duration = Duration::from_millis(16);
+const SLOW_US: i64 = Duration::from_millis(8).as_micros() as i64;
 const MAX_US: i64 = MAX.as_micros() as i64;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -39,7 +39,7 @@ impl super::Snapshot for Rtt {
             }
             let max = data.d3.take();
             if max > 0 {
-                w.write(path, key, "max_us", max);
+                w.write(path, key, "max_us", max as f64 / secs);
             }
         }
     }
@@ -62,7 +62,7 @@ impl IncrTo for Duration {
             data.d2.incr();
         }
         if us >= MAX_US {
-            data.d3.max(us);
+            data.d3.incr();
         }
     }
 }
