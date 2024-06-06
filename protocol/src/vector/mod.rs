@@ -178,6 +178,7 @@ impl Protocol for Vector {
     }
 
     // 将中间响应放到attachment中，方便后续继续查询
+    // 先收集si信息，再收集body
     #[inline]
     fn update_attachment(&self, attachment: &mut Vec<u8>, response: &mut Command) {
         let mut attach = Attachment::from(attachment.as_slice());
@@ -194,9 +195,17 @@ impl Protocol for Vector {
         attach.rsp_ok = true;
 
         // TODO 先打通，此处的内存操作需要考虑优化 fishermen
-        if response.header.rows > 0 {
-            let header = &response.header;
-            attach.attach_body(response.data().0.to_vec(), header.rows, header.columns);
+        match attach.si_enough() {
+            true => {
+                // 按si解析响应；然后按月聚合，将si信息放到attachment中
+                attach.attach_si(response);
+            }
+            false => {
+                if response.header.rows > 0 {
+                    let header = &response.header;
+                    attach.attach_body(response.data().0.to_vec(), header.rows, header.columns);
+                }
+            }
         }
         attachment.clear();
         attachment.extend(attach.to_vec());
