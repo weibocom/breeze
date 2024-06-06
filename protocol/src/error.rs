@@ -28,6 +28,7 @@ pub enum Error {
     Waiting, // 连接退出时，有请求已发送，但未接收到response
     IO(std::io::ErrorKind),
     AuthFailed,
+    TxBufFull,
 }
 
 impl From<std::io::Error> for Error {
