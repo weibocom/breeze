@@ -44,6 +44,10 @@ impl TxBuffer {
     pub fn len(&self) -> usize {
         self.write as usize
     }
+    #[inline]
+    pub fn unread_len(&self) -> usize {
+        (self.write - self.read) as usize
+    }
     #[inline(always)]
     fn ptr_r(&self) -> *const u8 {
         unsafe { self.data.as_ptr().offset(self.read as isize) }
