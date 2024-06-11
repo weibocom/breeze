@@ -82,11 +82,26 @@ impl Redis {
         match data.at(0) {
             b'-' | b':' | b'+' => data.line(oft)?,
             b'$' => *oft += data.num_of_string(oft)? + 2,
-            b'*' => data.skip_all_bulk(oft)?,
+            b'*' => {
+                let ctx = s.context();
+                let bulks_left = (&ctx[..8]).as_ptr() as *mut usize;
+                let offset = (&ctx[8..16]).as_ptr() as *mut usize;
+                let bulks_left = unsafe { &mut *bulks_left };
+                let offset = unsafe { &mut *offset };
+                let _ = data.skip_multibulks(offset, bulks_left)?;
+                *oft = *offset;
+                (*bulks_left == 0).then(|| *offset = 0);
+            }
             _ => return Err(RedisError::RespInvalid.into()),
         }
 
         Ok((*oft <= data.len()).then(|| Command::from_ok(s.take(*oft))))
+    }
+    #[inline(always)]
+    fn left_bytes<S: Stream>(&self, s: &mut S) -> usize {
+        let ctx = s.context();
+        let bulks = (&ctx[..8]).as_ptr() as *const usize;
+        (unsafe { *bulks }) * 64
     }
 }
 
@@ -129,7 +144,8 @@ impl Protocol for Redis {
             Err(Error::ProtocolIncomplete) => {
                 //assert!(oft + 3 >= data.len(), "oft:{} => {:?}", oft, data.slice());
                 if oft > data.len() {
-                    data.reserve(oft - data.len());
+                    let left = self.left_bytes(data);
+                    data.reserve((oft - data.len()).max(left));
                 }
 
                 Ok(None)
