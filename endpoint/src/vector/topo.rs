@@ -63,6 +63,137 @@ where
 {
 }
 
+impl<E, Req, P> VectorService<E, P>
+where
+    E: Endpoint<Item = Req>,
+    Req: Request,
+    P: Protocol,
+{
+    fn get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
+        let (year, shard_idx) = if req.ctx_mut().runs == 0 {
+            let vcmd = parse_vector_detail(****req, req.flag())?;
+            //定位年库
+            let date = self.strategist.get_date(&vcmd.keys)?;
+            let year = date.year() as u16;
+
+            let shard_idx = self.shard_idx(req.hash());
+            req.ctx_mut().year = year;
+            req.ctx_mut().shard_idx = shard_idx as u16;
+
+            let vector_builder = SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist, 0)?;
+            let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
+            req.reshape(MemGuard::from_vec(cmd));
+
+            (year, shard_idx)
+        } else {
+            (req.ctx_mut().year, req.ctx_mut().shard_idx as usize)
+        };
+
+        let shards = self.shards.get(year);
+        if shards.len() == 0 {
+            return Err(protocol::Error::TopInvalid);
+        }
+        debug_assert!(
+            shard_idx < shards.len(),
+            "mysql: {}/{} req:{:?}",
+            shard_idx,
+            shards.len(),
+            req
+        );
+        let shard = unsafe { shards.get_unchecked(shard_idx) };
+        log::debug!(
+            "+++ mysql {} send {} year {} shards {:?} => {:?}",
+            self.cfg.service,
+            shard_idx,
+            year,
+            shards,
+            req
+        );
+        Ok(shard)
+    }
+    fn more_get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
+        //需要请求多轮的场景处理逻辑看作是一次新的请求，除外出错重试
+        let mut more = false;
+        let mut attach = if self.strategist.more() && req.attachment().is_some() {
+            let attach = Attachment::from(req.attachment().unwrap().as_ref());
+            more = attach.rsp_ok;
+            Some(attach)
+        } else {
+            None
+        };
+        let (year, shard_idx) = if req.ctx_mut().runs == 0 || more {
+            let (vcmd, date, shard_idx) = if more {
+                //非第一轮请求
+                let vcmd = parse_vector_detail(**req.origin_data(), req.flag())?;
+                //重新发送后，视作新的请求，重置响应和runs
+                let attach = attach.as_mut().unwrap();
+                attach.rsp_ok = false;
+                req.attach(attach.to_vec());
+
+                let ctx = req.ctx_mut();
+                let date = self.strategist.get_next_date(ctx.year, ctx.month);
+                ctx.runs = 0;
+                (vcmd, date, ctx.shard_idx)
+            } else {
+                let vcmd = parse_vector_detail(****req, req.flag())?;
+                if self.strategist.more() && req.operation().is_retrival() {
+                    assert!(attach.is_none());
+                    // 对于需要重复查询不同table的场景，目前暂时先设为最多6次，后续需要配置si表来调整逻辑
+                    req.set_max_tries(6);
+                    req.retry_on_rsp_notok(true);
+                    let limit = vcmd.limit();
+                    assert!(limit > 0, "{limit}");
+
+                    //需要在buildsql之前设置
+                    attach = Some(Attachment::new(limit as u16));
+                    req.attach(attach.as_mut().unwrap().to_vec());
+                }
+                //定位年库
+                let date = self.strategist.get_date(&vcmd.keys)?;
+                let shard_idx = self.shard_idx(req.hash());
+
+                req.ctx_mut().shard_idx = shard_idx as u16;
+                (vcmd, date, shard_idx as u16)
+            };
+
+            req.ctx_mut().year = date.year() as u16;
+            req.ctx_mut().month = date.month() as u8;
+
+            let limit = attach.map_or(0, |a| a.left_count);
+            let vector_builder =
+                SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist, limit as u64)?;
+            let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
+            req.reshape(MemGuard::from_vec(cmd));
+
+            (date.year() as u16, shard_idx)
+        } else {
+            (req.ctx_mut().year, req.ctx_mut().shard_idx)
+        };
+
+        let shards = self.shards.get(year);
+        if shards.len() == 0 {
+            return Err(protocol::Error::TopInvalid);
+        }
+        let shard_idx = shard_idx as usize;
+        debug_assert!(
+            shard_idx < shards.len(),
+            "mysql: {}/{} req:{:?}",
+            shard_idx,
+            shards.len(),
+            req
+        );
+        let shard = unsafe { shards.get_unchecked(shard_idx) };
+        log::debug!(
+            "+++ mysql {} send {} year {} shards {:?} => {:?}",
+            self.cfg.service,
+            shard_idx,
+            year,
+            shards,
+            req
+        );
+        Ok(shard)
+    }
+}
 impl<E, Req, P> Endpoint for VectorService<E, P>
 where
     E: Endpoint<Item = Req>,
@@ -72,88 +203,11 @@ where
     type Item = Req;
 
     fn send(&self, mut req: Self::Item) {
-        let shard = (|| -> Result<&Shard<E>, protocol::Error> {
-            //需要请求多轮的场景处理逻辑看作是一次新的请求，除外出错重试
-            let mut more = false;
-            let mut attach = if self.strategist.more() && req.attachment().is_some() {
-                let attach = Attachment::from(req.attachment().unwrap().as_ref());
-                more = attach.rsp_ok;
-                Some(attach)
-            } else {
-                None
-            };
-            let (year, shard_idx) = if req.ctx_mut().runs == 0 || more {
-                let (vcmd, date, shard_idx) = if more {
-                    //非第一轮请求
-                    let vcmd = parse_vector_detail(**req.origin_data(), req.flag())?;
-                    //重新发送后，视作新的请求，重置响应和runs
-                    let attach = attach.as_mut().unwrap();
-                    attach.rsp_ok = false;
-                    req.attach(attach.to_vec());
-
-                    let ctx = req.ctx_mut();
-                    let date = self.strategist.get_next_date(ctx.year, ctx.month);
-                    ctx.runs = 0;
-                    (vcmd, date, ctx.shard_idx)
-                } else {
-                    let vcmd = parse_vector_detail(***req, req.flag())?;
-                    if self.strategist.more() && req.operation().is_retrival() {
-                        assert!(attach.is_none());
-                        // 对于需要重复查询不同table的场景，目前暂时先设为最多6次，后续需要配置si表来调整逻辑
-                        req.set_max_tries(6);
-                        req.retry_on_rsp_notok(true);
-                        let limit = vcmd.limit();
-                        assert!(limit > 0, "{limit}");
-
-                        //需要在buildsql之前设置
-                        attach = Some(Attachment::new(limit as u16));
-                        req.attach(attach.as_mut().unwrap().to_vec());
-                    }
-                    //定位年库
-                    let date = self.strategist.get_date(&vcmd.keys)?;
-                    let shard_idx = self.shard_idx(req.hash());
-
-                    req.ctx_mut().shard_idx = shard_idx as u16;
-                    (vcmd, date, shard_idx as u16)
-                };
-
-                req.ctx_mut().year = date.year() as u16;
-                req.ctx_mut().month = date.month() as u8;
-
-                let limit = attach.map_or(0, |a| a.left_count);
-                let vector_builder =
-                    SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist, limit as u64)?;
-                let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
-                req.reshape(MemGuard::from_vec(cmd));
-
-                (date.year() as u16, shard_idx)
-            } else {
-                (req.ctx_mut().year, req.ctx_mut().shard_idx)
-            };
-
-            let shards = self.shards.get(year);
-            if shards.len() == 0 {
-                return Err(protocol::Error::TopInvalid);
-            }
-            let shard_idx = shard_idx as usize;
-            debug_assert!(
-                shard_idx < shards.len(),
-                "mysql: {}/{} req:{:?}",
-                shard_idx,
-                shards.len(),
-                req
-            );
-            let shard = unsafe { shards.get_unchecked(shard_idx) };
-            log::debug!(
-                "+++ mysql {} send {} year {} shards {:?} => {:?}",
-                self.cfg.service,
-                shard_idx,
-                year,
-                shards,
-                req
-            );
-            Ok(shard)
-        })();
+        let shard = if !self.strategist.more() {
+            self.get_shard(&mut req)
+        } else {
+            self.more_get_shard(&mut req)
+        };
         let shard = match shard {
             Ok(shard) => shard,
             Err(e) => {
