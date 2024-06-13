@@ -14,6 +14,8 @@ pub struct VectorNamespace {
     pub(crate) backends_flaten: Vec<String>,
     #[serde(default)]
     pub(crate) backends: HashMap<Years, Vec<String>>,
+    #[serde(default)]
+    pub(crate) si: Si,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -46,6 +48,33 @@ pub struct Basic {
     pub(crate) region_enabled: bool,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Si {
+    #[serde(default)]
+    pub(crate) selector: String,
+    #[serde(default)]
+    pub(crate) timeout_ms_master: u32,
+    #[serde(default)]
+    pub(crate) timeout_ms_slave: u32,
+    #[serde(default)]
+    pub(crate) db_name: String,
+    #[serde(default)]
+    pub(crate) table_name: String,
+    #[serde(default)]
+    pub(crate) table_postfix: String,
+    #[serde(default)]
+    pub(crate) db_count: u32,
+    #[serde(default)]
+    pub(crate) table_count: u32,
+    #[serde(default)]
+    pub(crate) user: String,
+    #[serde(default)]
+    pub(crate) password: String,
+    #[serde(default)]
+    pub(crate) region_enabled: bool,
+    #[serde(default)]
+    pub(crate) backends: Vec<String>,
+}
 impl VectorNamespace {
     #[inline]
     pub(crate) fn try_from(cfg: &str) -> Option<Self> {
@@ -66,8 +95,15 @@ impl VectorNamespace {
                     }
                     last_year = year.1;
                 }
-                match ns.decrypt_password() {
+                match ns.decrypt_password(ns.basic.password.as_bytes()) {
                     Ok(password) => ns.basic.password = password,
+                    Err(e) => {
+                        log::warn!("failed to decrypt password, e:{}", e);
+                        return None;
+                    }
+                }
+                match ns.decrypt_password(ns.si.password.as_bytes()) {
+                    Ok(password) => ns.si.password = password,
                     Err(e) => {
                         log::warn!("failed to decrypt password, e:{}", e);
                         return None;
@@ -77,6 +113,8 @@ impl VectorNamespace {
                     init.extend_from_slice(b.1);
                     init
                 });
+                ns.backends_flaten
+                    .extend_from_slice(ns.si.backends.as_slice());
                 Some(ns)
             }
             Err(e) => {
@@ -87,24 +125,24 @@ impl VectorNamespace {
     }
 
     #[inline]
-    fn decrypt_password(&self) -> Result<String, Box<dyn std::error::Error>> {
+    fn decrypt_password(&self, data: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
         let key_pem = fs::read_to_string(&context::get().key_path)?;
-        let encrypted_data = general_purpose::STANDARD.decode(self.basic.password.as_bytes())?;
+        let encrypted_data = general_purpose::STANDARD.decode(data)?;
         let decrypted_data = ds::decrypt::decrypt_password(&key_pem, &encrypted_data)?;
         let decrypted_string = String::from_utf8(decrypted_data)?;
         Ok(decrypted_string)
     }
-    pub(crate) fn timeout_master(&self) -> Timeout {
+    pub(crate) fn timeout_master(&self, to_master: u32) -> Timeout {
         let mut to = TO_VECTOR_M;
-        if self.basic.timeout_ms_master > 0 {
-            to.adjust(self.basic.timeout_ms_master);
+        if to_master > 0 {
+            to.adjust(to_master);
         }
         to
     }
-    pub(crate) fn timeout_slave(&self) -> Timeout {
+    pub(crate) fn timeout_slave(&self, to_slave: u32) -> Timeout {
         let mut to = TO_VECTOR_S;
-        if self.basic.timeout_ms_slave > 0 {
-            to.adjust(self.basic.timeout_ms_master);
+        if to_slave > 0 {
+            to.adjust(to_slave);
         }
         to
     }
