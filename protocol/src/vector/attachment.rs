@@ -1,9 +1,12 @@
 use bincode::{config, Decode, Encode};
 
+use crate::Command;
+use crate::Packet;
+
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct Attachment {
-    // 待查询数量，不能超过u16::MAX
-    pub left_count: u16,
+    // 查询是否结束
+    pub finish: bool,
     // 当前查询的时间游标，一般是年月，like：202405/2405
     //本轮响应是否成功
     pub rsp_ok: bool,
@@ -13,30 +16,40 @@ pub struct Attachment {
     // 查询响应的body中token数量
     body_token_count: u16,
 
-    // si表信息
-    pub si_count: u16,  // si表中已查询到的数量，等于left_count时，si查询结束
-    pub current_si: u8, // 当前使用的si信息索引
-    si_body: Vec<u8>,   // si表中查询到的数据, si字段信息在配置里存放
+    si: Vec<u8>, // si表中查询到的数据, si字段信息在配置里存放
 }
 #[repr(C)]
 pub struct SiItem {
-    // 年月 数量
-    pub yy: u8,
-    pub mm: u8,
+    pub date: VDate,
     pub count: u16,
 }
+#[repr(C)]
+pub struct VDate {
+    pub year: u8,  // year
+    pub month: u8, // month
+}
+impl SiItem {
+    pub fn new(yy: u8, mm: u8, count: u16) -> Self {
+        Self {
+            date: VDate {
+                year: yy,
+                month: mm,
+            },
+            count,
+        }
+    }
+}
+
 impl Attachment {
     #[inline]
-    pub fn new(count: u16) -> Self {
+    pub fn new() -> Self {
         Attachment {
-            left_count: count,
+            finish: false,
             header: Vec::with_capacity(8),
-            body: Vec::with_capacity(count as usize),
+            body: Vec::with_capacity(1024),
             body_token_count: 0,
             rsp_ok: false,
-            si_count: 0,
-            current_si: 0,
-            si_body: Vec::with_capacity(24),
+            si: Vec::with_capacity(6),
         }
     }
 
@@ -58,7 +71,6 @@ impl Attachment {
     pub fn attach_body(&mut self, body_data: Vec<u8>, rows: u16, columns: u16) {
         self.body.push(body_data);
         self.body_token_count += rows * columns;
-        self.left_count = self.left_count.wrapping_sub(rows);
     }
 
     #[inline]
@@ -75,43 +87,34 @@ impl Attachment {
     pub fn body_token_count(&self) -> u16 {
         self.body_token_count
     }
-    // si表查询到的数据是否足够
-    #[inline]
-    pub fn si_enough(&self) -> bool {
-        self.left_count <= self.si_count
-    }
-    // 主动设置si表查询到的数据已足够，如到访问si表达最大次数
-    #[inline]
-    pub fn set_si_enough(&mut self) {
-        self.si_count = self.left_count;
-    }
     // 从response中解析si，并按yy mm聚合
+    // 约定：si返回结果的结构： uid、date、count顺序排列
     #[inline]
-    pub fn decode_si(response: &crate::Command) -> Vec<SiItem> {
-        let si = Vec::<SiItem>::with_capacity(response.count() as usize);
-        // todo!();
-        si
+    pub fn attach_si(&mut self, response: &Command) {
+        let rows = response.header.rows;
+        let cols = response.header.columns;
+        debug_assert_eq!(cols, 3);
+        let mut si = Vec::<SiItem>::with_capacity(rows as usize);
+
+        let data = Packet::from(***response);
+        let mut oft: usize = 0;
+        while oft < data.len() {
+            let _uid = data.num(&mut oft).unwrap();
+            let date = data.num(&mut oft).unwrap();
+            let count = data.num(&mut oft).unwrap();
+            let si_item = SiItem::new(date as u8, date as u8, count as u16);
+            si.push(si_item);
+        }
+
+        // self.si.extend(vec_si_items_to_bytes(si));
     }
     #[inline]
-    pub fn attach_si(&mut self, response: &crate::Command) {
-        let sis = Self::decode_si(response);
-        sis.iter().for_each(|si| {
-            self.si_body.push(si.yy);
-            self.si_body.push(si.mm);
-            self.si_count += si.count;
-            self.si_body.extend_from_slice(&si.count.to_be_bytes())
-        });
+    pub fn has_si(&mut self) -> bool {
+        self.si.len() > 0
     }
     #[inline]
-    pub fn read_si_item(&mut self) -> (u8, u8, u16) {
-        let p = self.si_body.as_ptr();
-        let offset = std::mem::size_of::<SiItem>() * self.current_si as usize;
-        self.current_si += 1;
-        let yy = unsafe { *p.add(offset) };
-        let mm = unsafe { *p.add(offset + 1) };
-        let count =
-            u16::from_be_bytes([unsafe { *p.add(offset + 2) }, unsafe { *p.add(offset + 3) }]);
-        (yy, mm, count)
+    pub fn si(&self) -> &Vec<SiItem> {
+        todo!()
     }
 }
 

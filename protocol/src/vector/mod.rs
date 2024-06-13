@@ -195,16 +195,16 @@ impl Protocol for Vector {
         attach.rsp_ok = true;
 
         // TODO 先打通，此处的内存操作需要考虑优化 fishermen
-        match attach.si_enough() {
+        match attach.has_si() {
             true => {
-                // 按si解析响应；然后按月聚合，将si信息放到attachment中
-                attach.attach_si(response);
-            }
-            false => {
                 if response.header.rows > 0 {
                     let header = &response.header;
                     attach.attach_body(response.data().0.to_vec(), header.rows, header.columns);
                 }
+            }
+            false => {
+                // 按si解析响应，并将si信息放到attachment中
+                attach.attach_si(response);
             }
         }
         attachment.clear();
@@ -214,7 +214,7 @@ impl Protocol for Vector {
     #[inline]
     fn queried_enough_responses(&self, attachment: &[u8]) -> bool {
         let attach = Attachment::from(attachment);
-        attach.left_count == 0
+        attach.finish
     }
 }
 
