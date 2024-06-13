@@ -107,8 +107,8 @@ impl Redis {
     #[inline(always)]
     fn left_bytes<S: Stream>(&self, s: &mut S) -> usize {
         let ctx = s.context();
-        let bulks = (&ctx[0..8]).as_ptr() as *const usize;
-        (unsafe { *bulks }) * 64
+        let bulks = (&ctx[4..8]).as_ptr() as *const u32;
+        (unsafe { *bulks }) as usize * 64
     }
 }
 
