@@ -1,13 +1,13 @@
-use bincode::{config, Decode, Encode};
-
 use crate::Command;
 use crate::Packet;
-
-#[derive(Debug, Clone, Encode, Decode)]
+use bincode::{config, Decode, Encode};
+#[derive(Debug, Clone, Encode, Decode, Default)]
 pub struct Attachment {
-    // 查询是否结束
     pub finish: bool,
-    // 当前查询的时间游标，一般是年月，like：202405/2405
+    // 查询的轮次，0代表si
+    pub round: u16,
+    // 待查询数量，不能超过u16::MAX
+    pub left_count: u16,
     //本轮响应是否成功
     pub rsp_ok: bool,
     // header，*2 + column names
@@ -18,6 +18,7 @@ pub struct Attachment {
 
     si: Vec<u8>, // si表中查询到的数据, si字段信息在配置里存放
 }
+
 #[repr(C)]
 pub struct SiItem {
     pub date: VDate,
@@ -42,9 +43,11 @@ impl SiItem {
 
 impl Attachment {
     #[inline]
-    pub fn new() -> Self {
+    pub fn new(left_count: u16) -> Self {
         Attachment {
             finish: false,
+            round: 0,
+            left_count: left_count,
             header: Vec::with_capacity(8),
             body: Vec::with_capacity(1024),
             body_token_count: 0,

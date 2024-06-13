@@ -344,3 +344,54 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
         }
     }
 }
+
+pub struct SiSqlBuilder<'a, S> {
+    vcmd: &'a VectorCmd,
+    hash: i64,
+    strategy: &'a S,
+}
+
+impl<'a, S: Strategy> SiSqlBuilder<'a, S> {
+    pub fn new(vcmd: &'a VectorCmd, hash: i64, strategy: &'a S) -> Result<Self> {
+        if vcmd.keys.len() != strategy.keys().len() {
+            Err(Error::RequestProtocolInvalid)
+        } else {
+            Ok(Self {
+                vcmd,
+                hash,
+                strategy,
+            })
+        }
+    }
+}
+
+impl<'a, S> MysqlBinary for SiSqlBuilder<'a, S> {
+    fn mysql_cmd(&self) -> Command {
+        Command::COM_QUERY
+    }
+}
+
+impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
+    fn len(&self) -> usize {
+        128
+    }
+
+    fn write_sql(&self, buf: &mut impl Write) {
+        // let cmd_type = vector::get_cmd_type(self.op).unwrap_or(vector::CommandType::Unknown);
+        match self.vcmd.cmd {
+            CommandType::VRange => {
+                // let _ = write!(
+                //     buf,
+                //     "select {} from {} where {}",
+                //     Select(self.vcmd.fields.get(0)),
+                //     Table(self.strategy, &self.date, self.hash),
+                //     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
+                // );
+            }
+            _ => {
+                //校验应该在parser_req出
+                panic!("not support cmd_type:{:?}", self.vcmd.cmd);
+            }
+        }
+    }
+}

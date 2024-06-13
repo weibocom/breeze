@@ -134,7 +134,7 @@ where
                     (ctx.idx as usize, &shard.master)
                 }
             };
-            ctx.idx = idx as u8;
+            ctx.idx = idx as u16;
             ctx.runs += 1;
             // 只重试一次，重试次数过多，可能会导致雪崩。如果不重试，现在的配额策略在当前副本也只会连续发送四次请求，问题也不大
             let try_next = ctx.runs == 1;

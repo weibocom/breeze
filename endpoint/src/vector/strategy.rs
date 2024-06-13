@@ -88,12 +88,12 @@ impl Strategist {
         }
     }
 
-    pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
-        match self {
-            Strategist::VectorTime(_) => panic!("VectorTime not support get_next_date"),
-            Strategist::Batch(inner) => inner.get_next_date(year, month),
-        }
-    }
+    // pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
+    //     match self {
+    //         Strategist::VectorTime(_) => panic!("VectorTime not support get_next_date"),
+    //         Strategist::Batch(inner) => inner.get_next_date(year, month),
+    //     }
+    // }
 }
 
 impl protocol::vector::Strategy for Strategist {
@@ -178,6 +178,7 @@ mod tests {
                     "127.0.0.1:8081,127.0.0.2:8081".into(),
                 ],
             )]),
+            si: Default::default(),
         };
         let strategy = Strategist::try_from(&ns);
         let mut buf = String::new();

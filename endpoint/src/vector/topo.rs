@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::Datelike;
+use chrono::{Datelike, NaiveDate};
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
@@ -17,7 +17,7 @@ use sharding::hash::{Hash, HashKey};
 use crate::dns::DnsConfig;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
-use protocol::vector::mysql::SqlBuilder;
+use protocol::vector::mysql::{SiSqlBuilder, SqlBuilder};
 
 use super::config::VectorNamespace;
 use super::strategy::Strategist;
@@ -92,17 +92,7 @@ where
         };
 
         let shards = self.shards.get(year);
-        if shards.len() == 0 {
-            return Err(protocol::Error::TopInvalid);
-        }
-        debug_assert!(
-            shard_idx < shards.len(),
-            "mysql: {}/{} req:{:?}",
-            shard_idx,
-            shards.len(),
-            req
-        );
-        let shard = unsafe { shards.get_unchecked(shard_idx) };
+        let shard = shards.get(shard_idx).ok_or(protocol::Error::TopInvalid)?;
         log::debug!(
             "+++ mysql {} send {} year {} shards {:?} => {:?}",
             self.cfg.service,
@@ -113,84 +103,100 @@ where
         );
         Ok(shard)
     }
+    fn si_shard_idx(&self, hash: i64) -> usize {
+        todo!();
+    }
+    fn si_shard(&self, idx: usize) -> &Shard<E> {
+        todo!();
+    }
     fn more_get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
-        //需要请求多轮的场景处理逻辑看作是一次新的请求，除外出错重试
-        let mut more = false;
-        let mut attach = if self.strategist.more() && req.attachment().is_some() {
-            let attach = Attachment::from(req.attachment().unwrap().as_ref());
-            more = attach.rsp_ok;
-            Some(attach)
-        } else {
-            None
-        };
-        let (year, shard_idx) = if req.ctx_mut().runs == 0 || more {
-            let (vcmd, date, shard_idx) = if more {
-                //非第一轮请求
-                let vcmd = parse_vector_detail(**req.origin_data(), req.flag())?;
-                //重新发送后，视作新的请求，重置响应和runs
-                let attach = attach.as_mut().unwrap();
-                attach.rsp_ok = false;
-                req.attach(attach.to_vec());
-
-                let ctx = req.ctx_mut();
-                let date = self.strategist.get_next_date(ctx.year, ctx.month);
-                ctx.runs = 0;
-                (vcmd, date, ctx.shard_idx)
-            } else {
+        let mut attach = req
+            .attachment()
+            .map_or(Default::default(), |v| Attachment::from(v.as_ref()));
+        //分别代表请求的轮次和每轮重试次数
+        let (round, runs) = (attach.round, req.ctx_mut().runs);
+        //runs == 0 表示第一轮第一次请求
+        let shard = if runs == 0 || attach.rsp_ok {
+            let shard = if runs == 0 {
+                //请求si表
+                assert_eq!(attach.left_count, 0);
+                assert_eq!(*req.context_mut(), 0);
                 let vcmd = parse_vector_detail(****req, req.flag())?;
-                if self.strategist.more() && req.operation().is_retrival() {
-                    assert!(attach.is_none());
-                    // 对于需要重复查询不同table的场景，目前暂时先设为最多6次，后续需要配置si表来调整逻辑
-                    req.set_max_tries(6);
+                if req.operation().is_retrival() {
                     req.retry_on_rsp_notok(true);
                     let limit = vcmd.limit();
                     assert!(limit > 0, "{limit}");
-
                     //需要在buildsql之前设置
-                    attach = Some(Attachment::new(limit as u16));
-                    req.attach(attach.as_mut().unwrap().to_vec());
+                    attach = Attachment::new(limit as u16);
                 }
-                //定位年库
-                let date = self.strategist.get_date(&vcmd.keys)?;
-                let shard_idx = self.shard_idx(req.hash());
 
+                let si_sql = SiSqlBuilder::new(&vcmd, req.hash(), &self.strategist)?;
+                let cmd = MysqlBuilder::build_packets_for_vector(si_sql)?;
+                req.reshape(MemGuard::from_vec(cmd));
+
+                let si_shard_idx = self.si_shard_idx(req.hash());
+                req.ctx_mut().shard_idx = si_shard_idx as u16;
+                self.si_shard(si_shard_idx)
+            } else {
+                let vcmd = parse_vector_detail(**req.origin_data(), req.flag())?;
+                //todo 根据round获取si
+                let si_items = attach.si();
+                assert!(si_items.len() > 0, "si_items.len() = 0");
+                assert!(
+                    round <= si_items.len() as u16,
+                    "round = {round}, si_items.len() = {}",
+                    si_items.len()
+                );
+                let si_item = &si_items[(round - 1) as usize];
+
+                let year = si_item.date.year as u16 + 2000;
+                //构建sql
+                let limit = attach.left_count.min(si_item.count);
+                let Some(date) = NaiveDate::from_ymd_opt(year.into(), si_item.date.month.into(), 0)
+                else {
+                    return Err(protocol::Error::ResponseInvalidMagic);
+                };
+                let vector_builder =
+                    SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist, limit as u64)?;
+                let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
+                req.reshape(MemGuard::from_vec(cmd));
+
+                //更新轮次信息
+                if round == si_items.len() as u16 || attach.left_count <= si_item.count {
+                    attach.finish = true;
+                }
+                attach.left_count -= limit;
+
+                //获取shard
+                let shard_idx = self.shard_idx(req.hash());
                 req.ctx_mut().shard_idx = shard_idx as u16;
-                (vcmd, date, shard_idx as u16)
+                let shards = self.shards.get(year);
+                shards.get(shard_idx).ok_or(protocol::Error::TopInvalid)?
             };
 
-            req.ctx_mut().year = date.year() as u16;
-            req.ctx_mut().month = date.month() as u8;
-
-            let limit = attach.map_or(0, |a| a.left_count);
-            let vector_builder =
-                SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist, limit as u64)?;
-            let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
-            req.reshape(MemGuard::from_vec(cmd));
-
-            (date.year() as u16, shard_idx)
+            //重新发送后，视作新的请求，重置响应和runs
+            attach.rsp_ok = false;
+            attach.round += 1;
+            req.attach(attach.to_vec());
+            req.ctx_mut().runs = 0;
+            shard
         } else {
-            (req.ctx_mut().year, req.ctx_mut().shard_idx)
+            if round - 1 == 0 {
+                //上一轮si表重试
+                self.si_shard(req.ctx_mut().shard_idx.into())
+            } else {
+                let (year, shard_idx) = (req.ctx_mut().year, req.ctx_mut().shard_idx);
+                let shards = self.shards.get(year);
+                shards
+                    .get(shard_idx as usize)
+                    .ok_or(protocol::Error::TopInvalid)?
+            }
         };
 
-        let shards = self.shards.get(year);
-        if shards.len() == 0 {
-            return Err(protocol::Error::TopInvalid);
-        }
-        let shard_idx = shard_idx as usize;
-        debug_assert!(
-            shard_idx < shards.len(),
-            "mysql: {}/{} req:{:?}",
-            shard_idx,
-            shards.len(),
-            req
-        );
-        let shard = unsafe { shards.get_unchecked(shard_idx) };
         log::debug!(
-            "+++ mysql {} send {} year {} shards {:?} => {:?}",
+            "+++ mysql {} shards {:?} => {:?}",
             self.cfg.service,
-            shard_idx,
-            year,
-            shards,
+            shard,
             req
         );
         Ok(shard)
@@ -217,6 +223,7 @@ where
                     protocol::Error::TopInvalid => ContextStatus::TopInvalid,
                     _ => ContextStatus::ReqInvalid,
                 };
+                req.try_next(false);
                 req.on_err(e);
                 return;
             }
@@ -238,7 +245,7 @@ where
                     (ctx.idx as usize, &shard.master)
                 }
             };
-            ctx.idx = idx as u8;
+            ctx.idx = idx as u16;
             ctx.runs += 1;
             // 只重试一次，重试次数过多，可能会导致雪崩。如果不重试，现在的配额策略在当前副本也只会连续发送四次请求，问题也不大
             let try_next = ctx.runs == 1;
