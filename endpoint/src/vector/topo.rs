@@ -27,6 +27,7 @@ use crate::shards::Shard;
 #[derive(Clone)]
 pub struct VectorService<E, P> {
     shards: Shards<E>,
+    si_shard: Vec<Shard<E>>,
     strategist: Strategist,
     parser: P,
     cfg: Box<DnsConfig<VectorNamespace>>,
@@ -38,6 +39,7 @@ impl<E, P> From<P> for VectorService<E, P> {
         Self {
             parser,
             shards: Default::default(),
+            si_shard: Default::default(),
             strategist: Default::default(),
             cfg: Default::default(),
         }
@@ -258,7 +260,8 @@ where
     E: Endpoint,
 {
     fn need_load(&self) -> bool {
-        self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
+        (self.shards.len() + self.si_shard.len()) != self.cfg.shards_url.len()
+            || self.cfg.need_load()
     }
     fn load(&mut self) -> bool {
         self.cfg.load_guard().check_load(|| self.load_inner())
@@ -367,7 +370,7 @@ where
                 let master = self.take_or_build(
                     &mut old,
                     &master_addr,
-                    self.cfg.timeout_master(),
+                    self.cfg.timeout_master(self.cfg.basic.timeout_ms_master),
                     res_option.clone(),
                 );
                 // slave
@@ -376,7 +379,7 @@ where
                     let slave = self.take_or_build(
                         &mut old,
                         &addr,
-                        self.cfg.timeout_slave(),
+                        self.cfg.timeout_slave(self.cfg.basic.timeout_ms_slave),
                         res_option.clone(),
                     );
                     replicas.push(slave);
@@ -393,11 +396,112 @@ where
             }
             self.shards.push((interval, shards_per_interval));
         }
-        assert_eq!(self.shards.len(), self.cfg.shards_url.len());
+        if !self.load_inner_si() {
+            return false;
+        }
+        assert_eq!(
+            self.shards.len() + self.si_shard.len(),
+            self.cfg.shards_url.len()
+        );
+
         log::info!("{} load complete. dropping:{:?}", self.cfg.service, {
             old.retain(|_k, v| v.len() > 0);
             old.keys()
         });
+        true
+    }
+
+    #[inline]
+    fn load_inner_si(&mut self) -> bool {
+        // 所有的ip要都能解析出主从域名
+        let mut addrs = Vec::with_capacity(self.cfg.si.backends.len());
+        for shard in &self.cfg.si.backends {
+            let shard: Vec<&str> = shard.split(",").collect();
+            if shard.len() < 2 {
+                log::warn!("{} si both master and slave required.", self.cfg.service);
+                return false;
+            }
+            let master_url = &shard[0];
+            let mut master = String::new();
+            dns::lookup_ips(master_url.host(), |ips| {
+                if ips.len() > 0 {
+                    master = ips[0].to_string() + ":" + master_url.port();
+                }
+            });
+            let mut slaves = Vec::with_capacity(8);
+            for url_port in &shard[1..] {
+                let url = url_port.host();
+                let port = url_port.port();
+                use ds::vec::Add;
+                dns::lookup_ips(url, |ips| {
+                    for ip in ips {
+                        slaves.add(ip.to_string() + ":" + port);
+                    }
+                });
+            }
+            if master.len() == 0 || slaves.len() == 0 {
+                log::warn!(
+                    "master:({}=>{}) or slave ({:?}=>{:?}) not looked up",
+                    master_url,
+                    master,
+                    &shard[1..],
+                    slaves
+                );
+                return false;
+            }
+            addrs.push((master, slaves));
+        }
+
+        // 到这之后，所有的shard都能解析出ip
+        let mut old = HashMap::with_capacity(addrs.len());
+        self.si_shard.split_off(0).into_iter().for_each(|shard| {
+            old.entry(shard.master.addr().to_string())
+                .or_insert(Vec::new())
+                .push(shard.master);
+            for endpoint in shard.slaves.into_inner() {
+                let addr = endpoint.addr().to_string();
+                // 一个ip可能存在于多个域名中。
+                old.entry(addr).or_insert(Vec::new()).push(endpoint);
+            }
+        });
+
+        // 遍历所有的shards_url
+        for (master_addr, slaves) in addrs {
+            assert_ne!(master_addr.len(), 0);
+            assert_ne!(slaves.len(), 0);
+            // 用户名和密码
+            let res_option = ResOption {
+                token: self.cfg.si.password.clone(),
+                username: self.cfg.si.user.clone(),
+            };
+            let master = self.take_or_build(
+                &mut old,
+                &master_addr,
+                self.cfg.timeout_master(self.cfg.si.timeout_ms_master),
+                res_option.clone(),
+            );
+            // slave
+            let mut replicas = Vec::with_capacity(8);
+            for addr in slaves {
+                let slave = self.take_or_build(
+                    &mut old,
+                    &addr,
+                    self.cfg.timeout_slave(self.cfg.si.timeout_ms_slave),
+                    res_option.clone(),
+                );
+                replicas.push(slave);
+            }
+
+            use crate::PerformanceTuning;
+            let shard = Shard::selector(
+                self.cfg.si.selector.tuning_mode(),
+                master,
+                replicas,
+                self.cfg.si.region_enabled,
+            );
+            self.si_shard.push(shard);
+        }
+
         true
     }
 }
@@ -410,7 +514,7 @@ where
     fn inited(&self) -> bool {
         // 每一个分片都有初始, 并且至少有一主一从。
         self.shards.len() > 0
-            && self.shards.len() == self.cfg.shards_url.len()
+            && (self.shards.len() + self.si_shard.len()) == self.cfg.shards_url.len()
             && self.shards.inited()
     }
 }
