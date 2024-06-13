@@ -505,8 +505,7 @@ pub enum ContextStatus {
 pub struct Context {
     pub runs: u8, // 运行的次数
     pub error: ContextStatus,
-    pub idx: u8, //最多有65535个主从
-    pub month: u8,
+    pub idx: u16, //最多有65535个主从
     pub shard_idx: u16,
     pub year: u16,
 }

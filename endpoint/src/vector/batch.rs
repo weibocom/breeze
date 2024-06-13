@@ -64,13 +64,13 @@ impl Batch {
         )
     }
 
-    pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
-        if month == 1 {
-            return NaiveDate::from_ymd_opt((year - 1).into(), 12, 1).unwrap();
-        } else {
-            return NaiveDate::from_ymd_opt(year.into(), (month - 1).into(), 1).unwrap();
-        }
-    }
+    // pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
+    //     if month == 1 {
+    //         return NaiveDate::from_ymd_opt((year - 1).into(), 12, 1).unwrap();
+    //     } else {
+    //         return NaiveDate::from_ymd_opt(year.into(), (month - 1).into(), 1).unwrap();
+    //     }
+    // }
 
     pub(crate) fn batch(&self, limit: u64, _: &protocol::vector::VectorCmd) -> u64 {
         limit
