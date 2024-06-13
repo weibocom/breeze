@@ -35,6 +35,17 @@ impl From<RequestContext> for StreamContext {
     }
 }
 
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ResponseContext {
+    pub oft: usize,
+    pub bulk: usize,
+}
+#[inline]
+pub fn transmute(ctx: &mut StreamContext) -> &mut ResponseContext {
+    unsafe { std::mem::transmute(ctx) }
+}
+
 // 请求的layer层次，目前只有masterOnly，后续支持业务访问某层时，在此扩展属性
 #[repr(u8)]
 pub enum LayerType {
@@ -584,11 +595,13 @@ impl Packet {
         Ok(())
     }
     #[inline]
-    pub fn skip_multibulks(&self, oft: &mut usize, bulks: &mut usize) -> Result<()> {
-        if *bulks == 0 {
-            *bulks = self.num_of_bulks(oft)?;
+    pub fn skip_multibulks(&self, ctx: &mut ResponseContext) -> Result<()> {
+        if ctx.bulk == 0 {
+            // multibuld的起始开始解析
+            ctx.oft = 0;
+            ctx.bulk = self.num_of_bulks(&mut ctx.oft)?;
         }
-        self.skip_multibulks_inner(oft, bulks)
+        self.skip_multibulks_inner(&mut ctx.oft, &mut ctx.bulk)
     }
     #[inline]
     pub fn skip_multibulks_inner(&self, oft: &mut usize, bulks: &mut usize) -> Result<()> {
