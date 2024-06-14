@@ -495,6 +495,7 @@ fn vget_7_with_count() {
 #[test]
 fn vcard() {
     let mut con = get_conn(&RESTYPE.get_host());
+    
     let like_by_me1 = LikeByMe {
         uid: 46687411842092848,
         like_id: 496874118420928,

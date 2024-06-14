@@ -97,6 +97,48 @@ fn msgque_read() {
     }
 }
 
+#[test]
+fn msgque_read_test() {
+    let mq_client = mc_get_text_conn(MQ);
+    
+    const COUNT: i32 = 5;
+
+    let key = "k2";
+    let mut read_count = 0;
+    let mut hits = 0;
+    loop {
+        let msg: Result<Option<String>, memcache::MemcacheError> = mq_client.get(key);
+        read_count += 1;
+
+        if msg.is_ok() {
+            let msg = msg.unwrap();
+            // 读空
+            if msg.is_none() {
+                println!("mq empty, hits:{}/{}", hits, read_count);
+                continue;
+            }
+
+            // 读到数据
+            let msg = msg.unwrap();
+            hits += 1;
+            println!("mq len/{}, hits:{}/{}", msg.len(), hits, read_count);
+            if hits >= COUNT {
+                println!("read all mq msgs count:{}/{}", hits, read_count);
+                break;
+            }
+        }
+        if read_count > 3 * COUNT {
+            println!("stop read for too many empty rs:{}/{}", hits, read_count);
+            break;
+        }
+        println!("mq read end, hits:{}/{}", hits, read_count);
+        assert_eq!(hits, COUNT);
+        assert_eq!(read_count, 3 * COUNT);
+
+        
+    }
+}
+
 /// 构建所需长度的msg
 fn build_msg(len: usize) -> String {
     let mut msg = format!("msg-{} ", len);
