@@ -197,8 +197,8 @@ impl fmt::Display for Error {
             Error::UrlError(ref err) => write!(f, "UrlError {{ {} }}", err),
             #[cfg(any(feature = "native-tls", feature = "rustls"))]
             Error::TlsError(ref err) => write!(f, "TlsError {{ {} }}", err),
-            Error::FromRowError(_) => "from row conversion error".fmt(f),
-            Error::FromValueError(_) => "from value conversion error".fmt(f),
+            Error::FromRowError(ref _row) => "from row conversion error".fmt(f),
+            Error::FromValueError(ref _value) => "from value conversion error".fmt(f),
         }
     }
 }
