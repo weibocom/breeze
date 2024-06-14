@@ -74,7 +74,7 @@ impl Redis {
         let data: Packet = s.slice().into();
         let ctx: &mut ResponseContext = transmute(s.context());
         log::debug!("+++ will parse redis rsp:{:?}", data);
-        data.check_onetoken(ctx.oft)?;
+        // data.check_onetoken(*oft)?;
 
         match data.at(0) {
             b'-' | b':' | b'+' => data.line(&mut ctx.oft)?,
@@ -84,6 +84,7 @@ impl Redis {
         }
 
         let oft = ctx.oft;
+        ctx.oft = 0; // 获得完整response，reset offset
         Ok((oft <= data.len()).then(|| Command::from_ok(s.take(oft))))
     }
     #[inline(always)]
