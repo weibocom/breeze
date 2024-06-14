@@ -161,7 +161,7 @@ impl<T: crate::kv::prelude::Protocol> QueryResult<T> {
                     return Ok(None);
                 }
             },
-            InEmptySet(_) => {
+            InEmptySet(_a) => {
                 self.handle_next();
                 Ok(None)
             }
