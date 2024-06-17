@@ -345,6 +345,12 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
     }
 }
 
+// (1) 根据object_type查用户的si数据
+// select uid, start_date as stat_date, sum(count) as count from $db$.$tb$ where uid=? and object_type in(?) group by uid, start_date order by start_date desc
+
+// (2) 查用户所有的si数据
+// select uid, start_date as stat_date, sum(count) as count from $db$.$tb$ where uid=? group by start_date order by start_date desc
+
 pub struct SiSqlBuilder<'a, S> {
     vcmd: &'a VectorCmd,
     hash: i64,

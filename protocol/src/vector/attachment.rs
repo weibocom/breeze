@@ -47,7 +47,7 @@ impl Attachment {
         Attachment {
             finish: false,
             round: 0,
-            left_count: left_count,
+            left_count,
             header: Vec::with_capacity(8),
             body: Vec::with_capacity(1024),
             body_token_count: 0,

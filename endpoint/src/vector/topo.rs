@@ -139,7 +139,7 @@ where
                 self.si_shard(si_shard_idx)
             } else {
                 let vcmd = parse_vector_detail(**req.origin_data(), req.flag())?;
-                //todo 根据round获取si
+                //根据round获取si
                 let si_items = attach.si();
                 assert!(si_items.len() > 0, "si_items.len() = 0");
                 assert!(
