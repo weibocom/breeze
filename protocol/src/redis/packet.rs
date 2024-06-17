@@ -575,21 +575,23 @@ impl Packet {
         while *bulks > 0 {
             (*bulks_total > 1000).then(|| metrics::incr_proto_incomplete());
             self.check_onetoken(*oft)?;
-            match self.at(*oft) {
+            let mut offset = *oft;
+            match self.at(offset) {
                 b'*' => {
-                    *bulks += self.num_of_bulks(oft)? as u32 - 1;
+                    *bulks += self.num_of_bulks(&mut offset)? as u32- 1;
                 }
                 b'$' => {
-                    // 跳过num个字节 + "\r\n" 2个字节
-                    *oft += self.num_of_string(oft)? + CRLF_LEN;
+                    // 能完整解析才跳过当前字符串：num个字节 + "\r\n" 2个字节
+                    self.bulk_string(&mut offset)?;
                     (*bulks > 0).then(|| *bulks -= 1);
                 }
                 b'+' | b':' => {
-                    self.line(oft)?;
+                    self.line(&mut offset)?;
                     (*bulks > 0).then(|| *bulks -= 1);
                 }
-                _ => panic!("unsupport rsp:{:?}, pos: {}/{:?}", self, oft, bulks),
+                _ => panic!("unsupport rsp:{:?}, pos: {}/{:?}", self, offset, bulks),
             }
+            *oft = offset;
         }
         Ok(())
     }
