@@ -86,7 +86,11 @@ impl Redis {
             _ => return Err(RedisError::RespInvalid.into()),
         }
 
-        Ok((*oft <= data.len()).then(|| Command::from_ok(s.take(*oft))))
+        match *oft <= data.len() {
+            true => Ok(Some(Command::from_ok(s.take(*oft)))),
+            false => Err(Error::ProtocolIncomplete),
+        }
+        // Ok((*oft <= data.len()).then(|| Command::from_ok(s.take(*oft))))
     }
 }
 
