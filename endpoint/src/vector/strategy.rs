@@ -118,7 +118,7 @@ impl protocol::vector::Strategy for Strategist {
     fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
         match self {
             Strategist::VectorTime(inner) => inner.condition_keys(),
-            Strategist::Batch(inner) => panic!("not support"),
+            Strategist::Batch(inner) => inner.condition_keys(),
         }
     }
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
@@ -127,13 +127,18 @@ impl protocol::vector::Strategy for Strategist {
             Strategist::Batch(inner) => inner.write_database_table(buf, date, hash),
         }
     }
+    fn write_si_database_table(&self, buf: &mut impl Write, hash: i64) {
+        match self {
+            Strategist::VectorTime(inner) => panic!("not support"),
+            Strategist::Batch(inner) => inner.write_si_database_table(buf, hash),
+        }
+    }
     fn batch(&self, limit: u64, vcmd: &protocol::vector::VectorCmd) -> u64 {
         match self {
             Strategist::VectorTime(_) => 0,
             Strategist::Batch(inner) => inner.batch(limit, vcmd),
         }
     }
-
     fn si_cols(&self) -> &[String] {
         match self {
             Strategist::VectorTime(_) => panic!("not support"),

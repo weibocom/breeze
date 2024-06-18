@@ -11,7 +11,11 @@ use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]
 pub struct Batch {
-    kvtime: KVTime,
+    db_prefix: String,
+    table_prefix: String,
+    table_postfix: Postfix,
+    hasher: Hasher,
+    distribution: DBRange,
     keys_name: Vec<String>,
     si_cols: Vec<String>,
 }
@@ -31,29 +35,71 @@ impl Batch {
         si_table_count: u32,
     ) -> Self {
         Self {
-            kvtime: KVTime::new_with_db(db_prefix, table_prefix, db_count, shards, table_postfix),
+            db_prefix,
+            table_prefix,
+            table_postfix,
+            distribution: DBRange::new(db_count as usize, 1usize, shards as usize),
+            hasher: Hasher::from("crc32"),
             keys_name,
             si_cols,
         }
     }
 
     pub fn distribution(&self) -> &DBRange {
-        <KVTime as Strategy>::distribution(&self.kvtime)
+        &self.distribution
     }
 
     pub fn hasher(&self) -> &Hasher {
-        <KVTime as Strategy>::hasher(&self.kvtime)
+        &self.hasher
     }
 
     pub fn get_date(&self, _: &[RingSlice]) -> Result<NaiveDate, Error> {
         let now = chrono::Utc::now().with_timezone(&Tz::Asia__Shanghai);
         Ok(NaiveDate::from_ymd_opt(now.year(), now.month(), now.day()).unwrap())
     }
+
+    pub fn write_dname_with_hash(&self, buf: &mut impl Write, hash: i64) {
+        let db_idx: usize = self.distribution.db_idx(hash);
+        let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
+    }
+
+    pub fn write_tname_with_date(&self, buf: &mut impl Write, date: &NaiveDate) {
+        let (mut year, month, day) = (date.year(), date.month(), date.day());
+        year %= 100;
+        match self.table_postfix {
+            Postfix::YYMM => {
+                let _ = write!(buf, "{}_{:02}{:02}", &self.table_prefix, year, month);
+            }
+            //Postfix::YYMMDD
+            _ => {
+                let _ = write!(
+                    buf,
+                    "{}_{:02}{:02}{:02}",
+                    &self.table_prefix, year, month, day
+                );
+            }
+        }
+    }
+
     pub fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
-        // let db_idx: usize = self.distribution.db_idx(hash);
-        // let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
+        self.write_dname_with_hash(buf, hash);
         let _ = buf.write_char('.');
-        // self.kvtime.write_tname_with_date(buf, date)
+        self.write_tname_with_date(buf, date)
+    }
+
+    pub(crate) fn write_si_database_table(&self, buf: &mut impl Write, hash: i64) {
+        //todo
+        let db_idx = 0;
+        let table_idx = 0;
+        let _ = write!(
+            buf,
+            "{}_{}.{}_{}",
+            self.db_prefix, db_idx, self.table_prefix, table_idx
+        );
+    }
+
+    pub(crate) fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
+        Box::new(self.keys_name.iter().map(|x| Some(x)))
     }
 
     pub(crate) fn keys(&self) -> &[String] {
@@ -74,13 +120,5 @@ impl Batch {
 
     pub(crate) fn si_cols(&self) -> &[String] {
         &self.si_cols
-    }
-}
-
-impl std::ops::Deref for Batch {
-    type Target = KVTime;
-
-    fn deref(&self) -> &Self::Target {
-        &self.kvtime
     }
 }

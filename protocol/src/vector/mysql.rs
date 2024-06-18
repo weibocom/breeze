@@ -390,7 +390,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
                     buf,
                     "select {} from {} where {}",
                     SiSelect(self.strategy.keys(), self.strategy.si_cols()),
-                    Table(self.strategy, &NaiveDate::default(), self.hash),
+                    SiTable(self.strategy, self.hash),
                     SiKeysAndCondsAndOrder(self.strategy, &self.vcmd),
                 );
             }
@@ -439,6 +439,14 @@ impl<'a, S: Strategy> Display for SiKeysAndCondsAndOrder<'a, S> {
             " group by {},{} order by {} desc",
             key_name, cols[0], cols[0]
         );
+        Ok(())
+    }
+}
+
+struct SiTable<'a, S>(&'a S, i64);
+impl<'a, S: Strategy> Display for SiTable<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.write_si_database_table(f, self.1);
         Ok(())
     }
 }
