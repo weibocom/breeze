@@ -275,7 +275,10 @@ where
     }
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = VectorNamespace::try_from(cfg) {
-            self.strategist = Strategist::try_from(&ns);
+            let Some(strategist) = Strategist::try_from(&ns) else {
+                return;
+            };
+            self.strategist = strategist;
             self.cfg.update(namespace, ns);
         }
     }

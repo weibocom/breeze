@@ -391,8 +391,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
                     "select {} from {} where {}",
                     SiSelect(self.strategy.keys(), self.strategy.si_cols()),
                     Table(self.strategy, &NaiveDate::default(), self.hash),
-                    // KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
-                    "",
+                    SiKeysAndCondsAndOrder(self.strategy, &self.vcmd),
                 );
             }
             _ => {
@@ -403,6 +402,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
     }
 }
 
+//keys, cols
 struct SiSelect<'a>(&'a [String], &'a [String]);
 impl<'a> Display for SiSelect<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -414,5 +414,31 @@ impl<'a> Display for SiSelect<'a> {
             self.1[0],
             self.1.last().unwrap()
         )
+    }
+}
+
+struct SiKeysAndCondsAndOrder<'a, S>(&'a S, &'a VectorCmd);
+impl<'a, S: Strategy> Display for SiKeysAndCondsAndOrder<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &Self(strategy, VectorCmd { keys, wheres, .. }) = self;
+        let key_name = &strategy.keys()[0];
+        let cols = strategy.si_cols();
+        let _ = write!(f, "`{}`={}", key_name, Val(&keys[0]));
+        for w in wheres {
+            //条件中和si相同的列写入条件
+            for col in cols {
+                if w.field.equal(col.as_bytes()) {
+                    let _ = write!(f, " and {}", ConditionDisplay(w));
+                    break;
+                }
+            }
+        }
+        //按key和日期group，按日期倒叙排
+        let _ = write!(
+            f,
+            " group by {},{} order by {} desc",
+            key_name, cols[0], cols[0]
+        );
+        Ok(())
     }
 }
