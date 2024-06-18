@@ -292,7 +292,6 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
     }
 
     fn write_sql(&self, buf: &mut impl Write) {
-        // let cmd_type = vector::get_cmd_type(self.op).unwrap_or(vector::CommandType::Unknown);
         match self.vcmd.cmd {
             CommandType::VRange | CommandType::VGet => {
                 let _ = write!(
@@ -345,12 +344,6 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
     }
 }
 
-// (1) 根据object_type查用户的si数据
-// select uid, start_date as stat_date, sum(count) as count from $db$.$tb$ where uid=? and object_type in(?) group by uid, start_date order by start_date desc
-
-// (2) 查用户所有的si数据
-// select uid, start_date as stat_date, sum(count) as count from $db$.$tb$ where uid=? group by start_date order by start_date desc
-
 pub struct SiSqlBuilder<'a, S> {
     vcmd: &'a VectorCmd,
     hash: i64,
@@ -382,22 +375,44 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
         128
     }
 
+    // (1) 根据object_type查用户的si数据
+    // select uid, start_date as stat_date, sum(count) as count from $db$.$tb$ where uid=? and object_type in(?) group by uid, start_date order by start_date desc
+
+    // (2) 查用户所有的si数据
+    // select uid, start_date as stat_date, sum(count) as count from $db$.$tb$ where uid=? group by start_date order by start_date desc
+
+    // select date，count字段名，
+    // 条件需要key，字段名
     fn write_sql(&self, buf: &mut impl Write) {
-        // let cmd_type = vector::get_cmd_type(self.op).unwrap_or(vector::CommandType::Unknown);
         match self.vcmd.cmd {
             CommandType::VRange => {
-                // let _ = write!(
-                //     buf,
-                //     "select {} from {} where {}",
-                //     Select(self.vcmd.fields.get(0)),
-                //     Table(self.strategy, &self.date, self.hash),
-                //     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
-                // );
+                let _ = write!(
+                    buf,
+                    "select {} from {} where {}",
+                    SiSelect(self.strategy.keys(), self.strategy.si_cols()),
+                    Table(self.strategy, &NaiveDate::default(), self.hash),
+                    // KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
+                    "",
+                );
             }
             _ => {
                 //校验应该在parser_req出
                 panic!("not support cmd_type:{:?}", self.vcmd.cmd);
             }
         }
+    }
+}
+
+struct SiSelect<'a>(&'a [String], &'a [String]);
+impl<'a> Display for SiSelect<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // select key, start_date, sum(count)
+        write!(
+            f,
+            "{},{},sum({})",
+            self.0[0],
+            self.1[0],
+            self.1.last().unwrap()
+        )
     }
 }

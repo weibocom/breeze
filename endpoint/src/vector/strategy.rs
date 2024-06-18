@@ -36,17 +36,29 @@ impl Default for Strategist {
 //1. 数据库表名的格式如 table_yymm
 //2. 库名表名后缀如何计算
 impl Strategist {
-    pub fn try_from(ns: &VectorNamespace) -> Self {
-        match ns.basic.strategy.as_str() {
-            "batch" => Self::Batch(Batch::new_with_db(
-                ns.basic.db_name.clone(),
-                ns.basic.table_name.clone(),
-                ns.basic.db_count,
-                //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
-                ns.backends.iter().next().unwrap().1.len() as u32,
-                ns.basic.table_postfix.as_str().into(),
-                ns.basic.keys.clone(),
-            )),
+    pub fn try_from(ns: &VectorNamespace) -> Option<Self> {
+        Some(match ns.basic.strategy.as_str() {
+            "batch" => {
+                //至少需要date和count两个字段名
+                if ns.si.si_cols.len() < 2 || ns.basic.keys.len() != 1 {
+                    log::warn!("len si_cols < 2 or len keys != 1");
+                    return None;
+                }
+                Self::Batch(Batch::new_with_db(
+                    ns.basic.db_name.clone(),
+                    ns.basic.table_name.clone(),
+                    ns.basic.db_count,
+                    //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
+                    ns.backends.iter().next().unwrap().1.len() as u32,
+                    ns.basic.table_postfix.as_str().into(),
+                    ns.basic.keys.clone(),
+                    ns.si.si_cols.clone(),
+                    ns.si.db_name,
+                    ns.si.db_count,
+                    ns.si.table_name,
+                    ns.si.table_count,
+                ))
+            }
             _ => Self::VectorTime(VectorTime::new_with_db(
                 ns.basic.db_name.clone(),
                 ns.basic.table_name.clone(),
@@ -56,7 +68,7 @@ impl Strategist {
                 ns.basic.table_postfix.as_str().into(),
                 ns.basic.keys.clone(),
             )),
-        }
+        })
     }
     #[inline]
     pub fn distribution(&self) -> &DBRange {
@@ -106,7 +118,7 @@ impl protocol::vector::Strategy for Strategist {
     fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
         match self {
             Strategist::VectorTime(inner) => inner.condition_keys(),
-            Strategist::Batch(inner) => inner.condition_keys(),
+            Strategist::Batch(inner) => panic!("not support"),
         }
     }
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
@@ -119,6 +131,13 @@ impl protocol::vector::Strategy for Strategist {
         match self {
             Strategist::VectorTime(_) => 0,
             Strategist::Batch(inner) => inner.batch(limit, vcmd),
+        }
+    }
+
+    fn si_cols(&self) -> &[String] {
+        match self {
+            Strategist::VectorTime(_) => panic!("not support"),
+            Strategist::Batch(inner) => inner.si_cols(),
         }
     }
 }
@@ -180,7 +199,7 @@ mod tests {
             )]),
             si: Default::default(),
         };
-        let strategy = Strategist::try_from(&ns);
+        let strategy = Strategist::try_from(&ns).unwrap();
         let mut buf = String::new();
         let buf = &mut buf;
         // vrange

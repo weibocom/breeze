@@ -425,4 +425,5 @@ pub trait Strategy {
     fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_>;
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64);
     fn batch(&self, limit: u64, vcmd: &VectorCmd) -> u64;
+    fn si_cols(&self) -> &[String];
 }
