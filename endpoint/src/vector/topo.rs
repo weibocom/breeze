@@ -169,6 +169,7 @@ where
 
                 //获取shard
                 let shard_idx = self.shard_idx(req.hash());
+                req.ctx_mut().year = year;
                 req.ctx_mut().shard_idx = shard_idx as u16;
                 let shards = self.shards.get(year);
                 shards.get(shard_idx).ok_or(protocol::Error::TopInvalid)?
