@@ -61,8 +61,6 @@ pub struct Si {
     #[serde(default)]
     pub(crate) table_name: String,
     #[serde(default)]
-    pub(crate) table_postfix: String,
-    #[serde(default)]
     pub(crate) db_count: u32,
     #[serde(default)]
     pub(crate) table_count: u32,

@@ -9,6 +9,7 @@ use sharding::hash::Hasher;
 
 use super::batch::Batch;
 use super::config::VectorNamespace;
+use super::si::Si;
 use super::vectortime::VectorTime;
 
 #[derive(Debug, Clone)]
@@ -57,6 +58,7 @@ impl Strategist {
                     ns.si.db_count,
                     ns.si.table_name.clone(),
                     ns.si.table_count,
+                    ns.si.backends.len() as u32,
                 ))
             }
             _ => Self::VectorTime(VectorTime::new_with_db(
