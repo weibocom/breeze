@@ -53,9 +53,9 @@ impl Strategist {
                     ns.basic.table_postfix.as_str().into(),
                     ns.basic.keys.clone(),
                     ns.si.si_cols.clone(),
-                    ns.si.db_name,
+                    ns.si.db_name.clone(),
                     ns.si.db_count,
-                    ns.si.table_name,
+                    ns.si.table_name.clone(),
                     ns.si.table_count,
                 ))
             }
