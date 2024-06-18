@@ -1,5 +1,6 @@
 use crate::kv::kvtime::KVTime;
 
+use super::si::Si;
 use super::strategy::Postfix;
 use chrono::{Datelike, NaiveDate};
 use chrono_tz::Tz;
@@ -18,6 +19,7 @@ pub struct Batch {
     distribution: DBRange,
     keys_name: Vec<String>,
     si_cols: Vec<String>,
+    si: Si,
 }
 
 impl Batch {
@@ -33,6 +35,7 @@ impl Batch {
         si_db_count: u32,
         si_table_prefix: String,
         si_table_count: u32,
+        si_shards: u32,
     ) -> Self {
         Self {
             db_prefix,
@@ -42,6 +45,13 @@ impl Batch {
             hasher: Hasher::from("crc32"),
             keys_name,
             si_cols,
+            si: Si::new(
+                si_db_prefix,
+                si_db_count,
+                si_table_prefix,
+                si_table_count,
+                si_shards,
+            ),
         }
     }
 
@@ -50,7 +60,7 @@ impl Batch {
     }
 
     pub fn si_distribution(&self) -> &DBRange {
-        todo!()
+        self.si.distribution()
     }
 
     pub fn hasher(&self) -> &Hasher {
