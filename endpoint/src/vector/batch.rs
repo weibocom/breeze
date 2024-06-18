@@ -49,6 +49,10 @@ impl Batch {
         &self.distribution
     }
 
+    pub fn si_distribution(&self) -> &DBRange {
+        todo!()
+    }
+
     pub fn hasher(&self) -> &Hasher {
         &self.hasher
     }
