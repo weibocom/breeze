@@ -9,7 +9,6 @@ use sharding::hash::Hasher;
 
 use super::batch::Batch;
 use super::config::VectorNamespace;
-use super::si::Si;
 use super::vectortime::VectorTime;
 
 #[derive(Debug, Clone)]
@@ -80,6 +79,13 @@ impl Strategist {
         }
     }
     #[inline]
+    pub fn si_distribution(&self) -> &DBRange {
+        match self {
+            Strategist::VectorTime(_) => panic!("not support"),
+            Strategist::Batch(inner) => inner.si_distribution(),
+        }
+    }
+    #[inline]
     pub fn hasher(&self) -> &Hasher {
         match self {
             Strategist::VectorTime(inner) => inner.hasher(),
@@ -131,7 +137,7 @@ impl protocol::vector::Strategy for Strategist {
     }
     fn write_si_database_table(&self, buf: &mut impl Write, hash: i64) {
         match self {
-            Strategist::VectorTime(inner) => panic!("not support"),
+            Strategist::VectorTime(_) => panic!("not support"),
             Strategist::Batch(inner) => inner.write_si_database_table(buf, hash),
         }
     }

@@ -1,12 +1,8 @@
-use crate::kv::kvtime::KVTime;
-
-use super::si::Si;
 use super::strategy::Postfix;
 use chrono::{Datelike, NaiveDate};
 use chrono_tz::Tz;
 use core::fmt::Write;
 use ds::RingSlice;
-use protocol::kv::Strategy;
 use protocol::Error;
 use sharding::{distribution::DBRange, hash::Hasher};
 
@@ -102,14 +98,7 @@ impl Batch {
     }
 
     pub(crate) fn write_si_database_table(&self, buf: &mut impl Write, hash: i64) {
-        //todo
-        let db_idx = 0;
-        let table_idx = 0;
-        let _ = write!(
-            buf,
-            "{}_{}.{}_{}",
-            self.db_prefix, db_idx, self.table_prefix, table_idx
-        );
+        self.si.write_database_table(buf, hash)
     }
 
     pub(crate) fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
@@ -134,5 +123,40 @@ impl Batch {
 
     pub(crate) fn si_cols(&self) -> &[String] {
         &self.si_cols
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Si {
+    db_prefix: String,
+    table_prefix: String,
+    distribution: DBRange,
+}
+
+impl Si {
+    fn new(
+        db_prefix: String,
+        db_count: u32,
+        table_prefix: String,
+        table_count: u32,
+        shards: u32,
+    ) -> Self {
+        Self {
+            db_prefix: db_prefix,
+            table_prefix: table_prefix,
+            distribution: DBRange::new(db_count as usize, table_count as usize, shards as usize),
+        }
+    }
+    fn distribution(&self) -> &DBRange {
+        &self.distribution
+    }
+    fn write_database_table(&self, buf: &mut impl Write, hash: i64) {
+        let db_idx = self.distribution.db_idx(hash);
+        let table_idx = self.distribution.table_idx(hash);
+        let _ = write!(
+            buf,
+            "{}_{}.{}_{}",
+            self.db_prefix, db_idx, self.table_prefix, table_idx
+        );
     }
 }

@@ -103,12 +103,6 @@ where
         );
         Ok(shard)
     }
-    fn si_shard_idx(&self, hash: i64) -> usize {
-        todo!();
-    }
-    fn si_shard(&self, idx: usize) -> &Shard<E> {
-        todo!();
-    }
     fn more_get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
         let mut attach = req
             .attachment()
@@ -134,9 +128,9 @@ where
                 let cmd = MysqlBuilder::build_packets_for_vector(si_sql)?;
                 req.reshape(MemGuard::from_vec(cmd));
 
-                let si_shard_idx = self.si_shard_idx(req.hash());
+                let si_shard_idx = self.strategist.si_distribution().index(req.hash());
                 req.ctx_mut().shard_idx = si_shard_idx as u16;
-                self.si_shard(si_shard_idx)
+                &self.si_shard[si_shard_idx]
             } else {
                 let vcmd = parse_vector_detail(**req.origin_data(), req.flag())?;
                 //根据round获取si
@@ -184,7 +178,7 @@ where
         } else {
             if round - 1 == 0 {
                 //上一轮si表重试
-                self.si_shard(req.ctx_mut().shard_idx.into())
+                &self.si_shard[req.ctx_mut().shard_idx as usize]
             } else {
                 let (year, shard_idx) = (req.ctx_mut().year, req.ctx_mut().shard_idx);
                 let shards = self.shards.get(year);
