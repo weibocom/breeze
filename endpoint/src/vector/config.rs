@@ -74,6 +74,8 @@ pub struct Si {
     pub(crate) region_enabled: bool,
     #[serde(default)]
     pub(crate) backends: Vec<String>,
+    #[serde(default)]
+    pub(crate) si_cols: Vec<String>,
 }
 impl VectorNamespace {
     #[inline]

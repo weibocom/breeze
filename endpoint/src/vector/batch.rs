@@ -13,6 +13,7 @@ use sharding::{distribution::DBRange, hash::Hasher};
 pub struct Batch {
     kvtime: KVTime,
     keys_name: Vec<String>,
+    si_cols: Vec<String>,
 }
 
 impl Batch {
@@ -23,10 +24,16 @@ impl Batch {
         shards: u32,
         table_postfix: Postfix,
         keys_name: Vec<String>,
+        si_cols: Vec<String>,
+        si_db_prefix: String,
+        si_db_count: u32,
+        si_table_prefix: String,
+        si_table_count: u32,
     ) -> Self {
         Self {
             kvtime: KVTime::new_with_db(db_prefix, table_prefix, db_count, shards, table_postfix),
             keys_name,
+            si_cols,
         }
     }
 
@@ -43,25 +50,14 @@ impl Batch {
         Ok(NaiveDate::from_ymd_opt(now.year(), now.month(), now.day()).unwrap())
     }
     pub fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
-        self.kvtime.write_dname_with_hash(buf, hash);
+        // let db_idx: usize = self.distribution.db_idx(hash);
+        // let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
         let _ = buf.write_char('.');
-        self.kvtime.write_tname_with_date(buf, date)
+        // self.kvtime.write_tname_with_date(buf, date)
     }
 
     pub(crate) fn keys(&self) -> &[String] {
         &self.keys_name
-    }
-
-    pub(crate) fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
-        Box::new(
-            self.keys_name
-                .iter()
-                .map(|key_name| match key_name.as_str() {
-                    "yymm" | "yymmdd" => None,
-                    // "yyyymm" | "yyyymmdd" => None,
-                    &_ => Some(key_name),
-                }),
-        )
     }
 
     // pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
@@ -74,6 +70,10 @@ impl Batch {
 
     pub(crate) fn batch(&self, limit: u64, _: &protocol::vector::VectorCmd) -> u64 {
         limit
+    }
+
+    pub(crate) fn si_cols(&self) -> &[String] {
+        &self.si_cols
     }
 }
 
