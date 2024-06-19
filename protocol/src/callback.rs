@@ -122,18 +122,24 @@ impl CallbackContext {
         // 异步请求不关注response。
         if !self.async_mode {
             debug_assert!(!self.complete(), "{:?}", self);
-            self.update_attachment(parser, &mut resp);
-            // 如果有attachment，需要解析attachment，并确认需要重试
-            let attach_ok = match self.attachment {
-                None => resp.ok(),
-                Some(ref attach) => parser.queried_enough_responses(attach),
-            };
-            if resp.ok() && !attach_ok {
-                resp.update_ok(false);
+            if resp.ok() {
+                let si_ok = self.update_attachment(parser, &mut resp);
+                if si_ok {
+                    // 如果有attachment，需要解析attachment，并确认需要重试
+                    let attach_ok = match self.attachment {
+                        None => resp.ok(),
+                        Some(ref attach) => parser.queried_enough_responses(attach),
+                    };
+                    if !attach_ok {
+                        resp.update_ok(false);
+                    }
+                    self.resp_count += resp.count();
+                } else {
+                    // 有响应，但内容为空；si为空，终止请求
+                    self.set_last();
+                }
+                self.swap_response(resp);
             }
-
-            self.resp_count += resp.count();
-            self.swap_response(resp);
         }
         self.on_done();
     }
@@ -155,11 +161,12 @@ impl CallbackContext {
         &mut self,
         parser: &P,
         resp: &mut Command,
-    ) {
+    ) -> bool {
         if self.attachment.is_some() {
             let attach = self.attachment.as_mut().expect("attach");
-            parser.update_attachment(attach, resp);
+            return parser.update_attachment(attach, resp);
         }
+        true
     }
 
     #[inline]

@@ -1,6 +1,7 @@
 use crate::Command;
 use crate::Packet;
 use bincode::{config, Decode, Encode};
+use ds::RingSlice;
 #[derive(Debug, Clone, Encode, Decode, Default)]
 pub struct Attachment {
     pub finish: bool,
@@ -20,14 +21,10 @@ pub struct Attachment {
 }
 
 #[repr(C)]
+#[derive(Encode, Decode)]
 pub struct SiItem {
     pub date: VDate,
     pub count: u16,
-}
-#[repr(C)]
-pub struct VDate {
-    pub year: u8,  // year
-    pub month: u8, // month
 }
 impl SiItem {
     pub fn new(yy: u8, mm: u8, count: u16) -> Self {
@@ -38,6 +35,36 @@ impl SiItem {
             },
             count,
         }
+    }
+}
+#[repr(C)]
+#[derive(Encode, Decode)]
+pub struct VDate {
+    pub year: u8,  // year
+    pub month: u8, // month
+}
+impl VDate {
+    // 2411 -> {24, 11}
+    pub fn from(d: &RingSlice) -> Self {
+        let mut s: Vec<u8> = Vec::with_capacity(d.len());
+        d.copy_to_vec(&mut s);
+        let s = String::from_utf8(s).expect("Invalid UTF-8 sequence");
+        let parts: Vec<&str> = s.split('-').collect();
+        assert!(parts.len() >= 2);
+        let y: u32 = parts[0].parse().expect("Failed to parse year");
+        let m: u8 = parts[1].parse().expect("Failed to parse month");
+        Self {
+            year: (y / 100) as u8,
+            month: m,
+        }
+    }
+    #[inline]
+    pub fn year(&self) -> u8 {
+        self.year
+    }
+    #[inline]
+    pub fn month(&self) -> u8 {
+        self.month
     }
 }
 
@@ -90,7 +117,7 @@ impl Attachment {
     pub fn body_token_count(&self) -> u16 {
         self.body_token_count
     }
-    // 从response中解析si，并按yy mm聚合
+    // 从response中解析si
     // 约定：si返回结果的结构： uid、date、count顺序排列
     #[inline]
     pub fn attach_si(&mut self, response: &Command) {
@@ -103,21 +130,22 @@ impl Attachment {
         let mut oft: usize = 0;
         while oft < data.len() {
             let _uid = data.num(&mut oft).unwrap();
-            let date = data.num(&mut oft).unwrap();
+            let d = data.bulk_string(&mut oft).unwrap();
+            let date = VDate::from(&d);
             let count = data.num(&mut oft).unwrap();
-            let si_item = SiItem::new(date as u8, date as u8, count as u16);
+            let si_item = SiItem::new(date.year(), date.month(), count as u16);
             si.push(si_item);
         }
-
-        // self.si.extend(vec_si_items_to_bytes(si));
+        // 将si转换为Vec<u8>
+        self.si = serialize_sitems(&si);
     }
     #[inline]
     pub fn has_si(&mut self) -> bool {
         self.si.len() > 0
     }
     #[inline]
-    pub fn si(&self) -> &Vec<SiItem> {
-        todo!()
+    pub fn si(&self) -> Vec<SiItem> {
+        deserialize_sitems(&self.si)
     }
 }
 
@@ -128,4 +156,16 @@ impl From<&[u8]> for Attachment {
         assert_eq!(len, bytes.len());
         data
     }
+}
+
+fn serialize_sitems(items: &Vec<SiItem>) -> Vec<u8> {
+    let config = config::standard();
+    bincode::encode_to_vec(items, config).unwrap()
+}
+
+fn deserialize_sitems(bytes: &[u8]) -> Vec<SiItem> {
+    let config = config::standard();
+    let (data, len) = bincode::decode_from_slice(bytes, config).expect("SiItem");
+    assert_eq!(len, bytes.len());
+    data
 }

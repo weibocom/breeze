@@ -67,8 +67,8 @@ impl crate::Request for Request {
         self.ctx().attachment()
     }
     #[inline]
-    fn update_attachment<P: crate::Proto>(&mut self, parser: &P, response: &mut Command) {
-        self.ctx().update_attachment(parser, response);
+    fn update_attachment<P: crate::Proto>(&mut self, parser: &P, response: &mut Command) -> bool {
+        self.ctx().update_attachment(parser, response)
     }
     #[inline]
     fn set_max_tries(&mut self, max_tries: u8) {
