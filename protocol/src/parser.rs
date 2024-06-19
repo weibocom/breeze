@@ -130,9 +130,10 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     }
 
     #[inline]
-    fn update_attachment(&self, attachment: &mut Vec<u8>, response: &mut Command) {
+    fn update_attachment(&self, attachment: &mut Vec<u8>, response: &mut Command) -> bool {
         // 默认情况下，attachment应该为空
         assert!(false, "{:?} {response}", attachment);
+        false
     }
     fn queried_enough_responses(&self, _attachment: &[u8]) -> bool {
         true

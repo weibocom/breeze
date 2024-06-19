@@ -70,6 +70,6 @@ pub trait Request:
     fn attach(&mut self, attachment: Vec<u8>);
     // 获取附加信息
     fn attachment(&self) -> Option<&Vec<u8>>;
-    fn update_attachment<P: crate::Proto>(&mut self, parser: &P, response: &mut Command);
+    fn update_attachment<P: crate::Proto>(&mut self, parser: &P, response: &mut Command) -> bool;
     fn set_max_tries(&mut self, max_tries: u8);
 }

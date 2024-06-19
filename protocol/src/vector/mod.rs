@@ -180,7 +180,8 @@ impl Protocol for Vector {
     // 将中间响应放到attachment中，方便后续继续查询
     // 先收集si信息，再收集body
     #[inline]
-    fn update_attachment(&self, attachment: &mut Vec<u8>, response: &mut Command) {
+    fn update_attachment(&self, attachment: &mut Vec<u8>, response: &mut Command) -> bool {
+        assert!(response.ok());
         let mut attach = Attachment::from(attachment.as_slice());
 
         if attach.is_empty() {
@@ -191,9 +192,6 @@ impl Protocol for Vector {
             attach.attach_header(header_data);
         }
 
-        // response是否为空，这里都需要将rsp_ok置为true
-        attach.rsp_ok = true;
-
         // TODO 先打通，此处的内存操作需要考虑优化 fishermen
         match attach.has_si() {
             true => {
@@ -203,12 +201,19 @@ impl Protocol for Vector {
                 }
             }
             false => {
-                // 按si解析响应，并将si信息放到attachment中
+                // 按si解析响应: 未成功获取有效si信息，返回失败
+                if response.count() < 1 {
+                    return false;
+                }
+                // 将si信息放到attachment中
                 attach.attach_si(response);
             }
         }
+        // response是否为空，这里都需要将rsp_ok置为true
+        attach.rsp_ok = true;
         attachment.clear();
         attachment.extend(attach.to_vec());
+        true
     }
 
     #[inline]
