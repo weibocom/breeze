@@ -84,12 +84,17 @@ impl Redis {
         }
 
         let oft = ctx.oft;
-        ctx.oft = 0; // 获得完整response，reset offset
-        Ok((oft <= data.len()).then(|| Command::from_ok(s.take(oft))))
+        ctx.oft = 0; // 响应消息是b'$'，若数据未接收完整，下次需要从起始位置开始解析
+        match oft <= data.len() {
+            true => Ok(Some(Command::from_ok(s.take(oft)))),
+            false => Err(Error::ProtocolIncomplete),
+        }
+        // Ok((*oft <= data.len()).then(|| Command::from_ok(s.take(*oft))))
     }
     #[inline(always)]
     fn left_bytes<S: Stream>(&self, s: &mut S) -> usize {
         let ctx = transmute(s.context());
+        // 64是经验值
         ctx.bulk * 64
     }
 }
