@@ -10,7 +10,7 @@ use crate::{
     Command, Commander, Error, HashedCommand, Metric, MetricItem, MetricName, Protocol,
     RequestProcessor, Result, Stream, Writer,
 };
-pub use packet::Packet;
+pub use packet::{transmute, Packet, ResponseContext};
 use sharding::hash::Hash;
 
 #[derive(Clone, Default)]
@@ -70,27 +70,32 @@ impl Redis {
     }
 
     #[inline]
-    fn parse_response_inner<S: Stream>(
-        &self,
-        s: &mut S,
-        oft: &mut usize,
-    ) -> Result<Option<Command>> {
+    fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data: Packet = s.slice().into();
+        let ctx: &mut ResponseContext = transmute(s.context());
         log::debug!("+++ will parse redis rsp:{:?}", data);
-        data.check_onetoken(*oft)?;
+        // data.check_onetoken(*oft)?;
 
         match data.at(0) {
-            b'-' | b':' | b'+' => data.line(oft)?,
-            b'$' => *oft += data.num_of_string(oft)? + 2,
-            b'*' => data.skip_all_bulk(oft)?,
+            b'-' | b':' | b'+' => data.line(&mut ctx.oft)?,
+            b'$' => ctx.oft += data.num_of_string(&mut ctx.oft)? + 2,
+            b'*' => data.skip_multibulks(ctx)?,
             _ => return Err(RedisError::RespInvalid.into()),
         }
 
-        match *oft <= data.len() {
-            true => Ok(Some(Command::from_ok(s.take(*oft)))),
+        let oft = ctx.oft;
+        ctx.oft = 0; // 响应消息是b'$'，若数据未接收完整，下次需要从起始位置开始解析
+        match oft <= data.len() {
+            true => Ok(Some(Command::from_ok(s.take(oft)))),
             false => Err(Error::ProtocolIncomplete),
         }
         // Ok((*oft <= data.len()).then(|| Command::from_ok(s.take(*oft))))
+    }
+    #[inline(always)]
+    fn left_bytes<S: Stream>(&self, s: &mut S) -> usize {
+        let ctx = transmute(s.context());
+        // 64是经验值
+        ctx.bulk * 64
     }
 }
 
@@ -127,12 +132,17 @@ impl Protocol for Redis {
     // 为每一个req解析一个response
     #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        let mut oft = 0;
-        match self.parse_response_inner(data, &mut oft) {
+        match self.parse_response_inner(data) {
             Ok(cmd) => Ok(cmd),
             Err(Error::ProtocolIncomplete) => {
+                let ctx = transmute(data.context());
+                let oft = ctx.oft;
                 //assert!(oft + 3 >= data.len(), "oft:{} => {:?}", oft, data.slice());
-                if oft > data.len() {
+                if ctx.bulk > 0 {
+                    // 响应消息是array场景
+                    let left = self.left_bytes(data);
+                    data.reserve(left);
+                } else if oft > data.len() {
                     data.reserve(oft - data.len());
                 }
 
