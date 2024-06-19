@@ -35,6 +35,17 @@ impl From<RequestContext> for StreamContext {
     }
 }
 
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ResponseContext {
+    pub oft: usize,
+    pub bulk: usize,
+}
+#[inline]
+pub fn transmute(ctx: &mut StreamContext) -> &mut ResponseContext {
+    unsafe { std::mem::transmute(ctx) }
+}
+
 // 请求的layer层次，目前只有masterOnly，后续支持业务访问某层时，在此扩展属性
 #[repr(u8)]
 pub enum LayerType {
@@ -580,6 +591,39 @@ impl Packet {
                 _ => panic!("unsupport rsp:{:?}, pos: {}/{}", self, oft, bulk_count),
             }
             bulk_count -= 1;
+        }
+        Ok(())
+    }
+    #[inline]
+    pub fn skip_multibulks(&self, ctx: &mut ResponseContext) -> Result<()> {
+        if ctx.bulk == 0 {
+            // multibuld的起始开始解析
+            ctx.oft = 0;
+            ctx.bulk = self.num_of_bulks(&mut ctx.oft)?;
+        }
+        self.skip_multibulks_inner(&mut ctx.oft, &mut ctx.bulk)
+    }
+    #[inline]
+    pub fn skip_multibulks_inner(&self, oft: &mut usize, bulks: &mut usize) -> Result<()> {
+        while *bulks > 0 {
+            self.check_onetoken(*oft)?;
+            let mut offset = *oft;
+            match self.at(offset) {
+                b'*' => {
+                    *bulks += self.num_of_bulks(&mut offset)? - 1;
+                }
+                b'$' => {
+                    // 能完整解析才跳过当前字符串：num个字节 + "\r\n" 2个字节
+                    self.bulk_string(&mut offset)?;
+                    (*bulks > 0).then(|| *bulks -= 1);
+                }
+                b'+' | b':' => {
+                    self.line(&mut offset)?;
+                    (*bulks > 0).then(|| *bulks -= 1);
+                }
+                _ => panic!("unsupport rsp:{:?}, pos: {}/{:?}", self, offset, bulks),
+            }
+            *oft = offset;
         }
         Ok(())
     }
