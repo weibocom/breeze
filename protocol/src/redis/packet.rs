@@ -464,7 +464,10 @@ impl Packet {
     pub fn num(&self, oft: &mut usize) -> crate::Result<usize> {
         // 至少4个字节
         if *oft + 4 <= self.len() {
-            debug_assert!(self[*oft] == b'*' || self[*oft] == b'$', "packet:{self:?}");
+            debug_assert!(
+                self[*oft] == b'*' || self[*oft] == b'$' || self[*oft] == b':',
+                "packet:{self:?}"
+            );
             let start = *oft;
             //*oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
             *oft += num_skips(self.at(*oft + 1));

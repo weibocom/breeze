@@ -146,7 +146,7 @@ where
                 let year = si_item.date.year as u16 + 2000;
                 //构建sql
                 let limit = attach.left_count.min(si_item.count);
-                let Some(date) = NaiveDate::from_ymd_opt(year.into(), si_item.date.month.into(), 0)
+                let Some(date) = NaiveDate::from_ymd_opt(year.into(), si_item.date.month.into(), 1)
                 else {
                     return Err(protocol::Error::ResponseInvalidMagic);
                 };
@@ -174,6 +174,7 @@ where
             attach.round += 1;
             req.attach(attach.to_vec());
             req.ctx_mut().runs = 0;
+            req.set_fitst_try();
             shard
         } else {
             if round - 1 == 0 {

@@ -122,23 +122,23 @@ impl CallbackContext {
         // 异步请求不关注response。
         if !self.async_mode {
             debug_assert!(!self.complete(), "{:?}", self);
-            if resp.ok() {
-                let si_ok = self.update_attachment(parser, &mut resp);
-                if si_ok {
-                    // 如果有attachment，需要解析attachment，并确认需要重试
-                    let attach_ok = match self.attachment {
-                        None => resp.ok(),
-                        Some(ref attach) => parser.queried_enough_responses(attach),
-                    };
+            if self.attachment.is_none() {
+                // 非vector batch场景
+                self.swap_response(resp);
+            } else {
+                // vector batch场景
+                if resp.ok() {
+                    // 如果有attachment，更新attachment
+                    let (attach_ok, last, count) = self.update_attachment(parser, &mut resp);
                     if !attach_ok {
                         resp.update_ok(false);
                     }
-                    self.resp_count += resp.count();
-                } else {
-                    // 有响应，但内容为空；si为空，终止请求
-                    self.set_last();
+                    last.then(|| self.set_last());
+                    if count > 0 {
+                        self.resp_count += count;
+                        self.swap_response(resp);
+                    }
                 }
-                self.swap_response(resp);
             }
         }
         self.on_done();
@@ -161,12 +161,12 @@ impl CallbackContext {
         &mut self,
         parser: &P,
         resp: &mut Command,
-    ) -> bool {
+    ) -> (bool, bool, u32) {
         if self.attachment.is_some() {
             let attach = self.attachment.as_mut().expect("attach");
             return parser.update_attachment(attach, resp);
         }
-        true
+        (true, true, 0)
     }
 
     #[inline]
@@ -175,8 +175,12 @@ impl CallbackContext {
             // 当前重试条件为 rsp == None || ("mc" && !rsp.ok())
             if self.inited() {
                 // 优先筛出正常的请求，便于理解
-                // rsp.ok 不需要重试
+                // rsp.ok
                 if unsafe { self.unchecked_response().ok() } {
+                    // vector batch请求，最后一条请求已成功，不需要重试
+                    if self.attachment.is_some() {
+                        return !self.last;
+                    }
                     return false;
                 }
                 //有响应并且!ok，配置了!retry_on_rsp_notok，不需要重试，比如mysql
@@ -347,10 +351,13 @@ impl CallbackContext {
         // todo: 可优化为依据请求数或者响应数量判断可以设置last为true
         self.last = true;
     }
-
     #[inline]
     pub fn set_max_tries(&mut self, max_tries: u8) {
         self.max_tries = max_tries;
+    }
+    #[inline]
+    pub fn set_fitst_try(&mut self) {
+        self.tries = 0.into();
     }
 }
 
