@@ -54,7 +54,7 @@ impl VDate {
         let y: u32 = parts[0].parse().expect("Failed to parse year");
         let m: u8 = parts[1].parse().expect("Failed to parse month");
         Self {
-            year: (y / 100) as u8,
+            year: y.checked_rem(100).expect("Year overflow") as u8,
             month: m,
         }
     }
@@ -120,7 +120,7 @@ impl Attachment {
     // 从response中解析si
     // 约定：si返回结果的结构： uid、date、count顺序排列
     #[inline]
-    pub fn attach_si(&mut self, response: &Command) {
+    pub fn attach_si(&mut self, response: &Command) -> bool {
         let rows = response.header.rows;
         let cols = response.header.columns;
         debug_assert_eq!(cols, 3);
@@ -129,15 +129,22 @@ impl Attachment {
         let data = Packet::from(***response);
         let mut oft: usize = 0;
         while oft < data.len() {
-            let _uid = data.num(&mut oft).unwrap();
-            let d = data.bulk_string(&mut oft).unwrap();
-            let date = VDate::from(&d);
-            let count = data.num(&mut oft).unwrap();
-            let si_item = SiItem::new(date.year(), date.month(), count as u16);
-            si.push(si_item);
+            if data.num(&mut oft).is_err() {
+                return false;
+            }
+            let d = data.bulk_string(&mut oft);
+            if d.is_err() {
+                return false;
+            }
+            if let Ok(count) = data.num(&mut oft) {
+                let date = VDate::from(&d.unwrap());
+                let si_item = SiItem::new(date.year(), date.month(), count as u16);
+                si.push(si_item);
+            }
         }
         // 将si转换为Vec<u8>
         self.si = serialize_sitems(&si);
+        true
     }
     #[inline]
     pub fn has_si(&mut self) -> bool {
@@ -146,6 +153,10 @@ impl Attachment {
     #[inline]
     pub fn si(&self) -> Vec<SiItem> {
         deserialize_sitems(&self.si)
+    }
+    #[inline]
+    pub fn finish(&self) -> bool {
+        self.finish
     }
 }
 

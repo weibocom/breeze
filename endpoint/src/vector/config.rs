@@ -102,19 +102,21 @@ impl VectorNamespace {
                         return None;
                     }
                 }
-                match ns.decrypt_password(ns.si.password.as_bytes()) {
-                    Ok(password) => ns.si.password = password,
-                    Err(e) => {
-                        log::warn!("failed to decrypt password, e:{}", e);
-                        return None;
-                    }
-                }
                 ns.backends_flaten = ns.backends.iter().fold(Vec::new(), |mut init, b| {
                     init.extend_from_slice(b.1);
                     init
                 });
-                ns.backends_flaten
-                    .extend_from_slice(ns.si.backends.as_slice());
+                if ns.basic.strategy.as_str() == "batch" {
+                    match ns.decrypt_password(ns.si.password.as_bytes()) {
+                        Ok(password) => ns.si.password = password,
+                        Err(e) => {
+                            log::warn!("failed to decrypt si password, e:{}", e);
+                            return None;
+                        }
+                    }
+                    ns.backends_flaten
+                        .extend_from_slice(ns.si.backends.as_slice());
+                }
                 Some(ns)
             }
             Err(e) => {
