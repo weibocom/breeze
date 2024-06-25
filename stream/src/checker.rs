@@ -57,6 +57,7 @@ impl<P, Req> BackendChecker<P, Req> {
         self.path.push(&self.addr);
         let path_addr = &self.path;
         let mut be_conns = path_addr.qps("be_conn");
+        let mut buf_full = path_addr.num("buf_full");
         let mut timeout = Path::base().qps("timeout");
         let mut m_timeout = path_addr.qps("timeout");
         let mut reconn = crate::reconn::ReconnPolicy::new();
@@ -120,6 +121,9 @@ impl<P, Req> BackendChecker<P, Req> {
                 }
                 Error::ChanReadClosed => {
                     debug_assert!(!self.finish.get(), "channel closed but not finish");
+                }
+                Error::TxBufFull => {
+                    buf_full += 1;
                 }
                 Error::UnexpectedData | _ => {
                     let mut unexpected_resp = Path::base().num("unexpected_resp");
