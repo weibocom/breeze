@@ -122,27 +122,26 @@ impl CallbackContext {
         // 异步请求不关注response。
         if !self.async_mode {
             debug_assert!(!self.complete(), "{:?}", self);
-            if self.attachment.is_none() {
-                // 非vector batch场景
-                self.swap_response(resp);
-            } else {
-                // vector batch场景
-                // 返回失败，则终止请求。
+            if self.attachment.is_some() {
+                // vector聚合场景
                 // 返回成功：
-                //   1. 先更新Si，若Si为空，则也终止请求
-                // 则更新attachment，并判断是否是最后一个。
+                //   1. 第一轮获取si；若si获取失败（例如si为空），则终止请求
+                //   2. 后续轮次更新attachment，并判断是否是最后一轮。
+                // 返回失败，则终止请求。
                 if resp.ok() {
-                    // 如果有attachment，更新attachment
-                    let (attach_ok, last, count) = self.update_attachment(parser, &mut resp);
-                    if !attach_ok {
-                        resp.update_ok(false);
-                    }
+                    // 更新attachment
+                    let (last, attach_count) = self.update_attachment(parser, &mut resp);
                     last.then(|| self.set_last());
-                    if count > 0 {
-                        self.resp_count += count;
-                        self.swap_response(resp);
-                    }
+                    (attach_count > 0).then(|| self.resp_count += attach_count);
+                } else {
+                    self.set_last();
                 }
+                if self.last() {
+                    // 中间轮次的resp没有被使用，可忽略
+                    self.swap_response(resp);
+                }
+            } else {
+                self.swap_response(resp);
             }
         }
         self.on_done();
@@ -165,12 +164,12 @@ impl CallbackContext {
         &mut self,
         parser: &P,
         resp: &mut Command,
-    ) -> (bool, bool, u32) {
+    ) -> (bool, u32) {
         if self.attachment.is_some() {
             let attach = self.attachment.as_mut().expect("attach");
             return parser.update_attachment(attach, resp);
         }
-        (true, true, 0)
+        (true, 0)
     }
 
     #[inline]
@@ -183,7 +182,7 @@ impl CallbackContext {
                 if unsafe { self.unchecked_response().ok() } {
                     // vector batch请求，最后一条请求已成功，不需要重试
                     if self.attachment.is_some() {
-                        return !self.last;
+                        return !self.last();
                     }
                     return false;
                 }

@@ -38,7 +38,7 @@ impl Default for Strategist {
 impl Strategist {
     pub fn try_from(ns: &VectorNamespace) -> Option<Self> {
         Some(match ns.basic.strategy.as_str() {
-            "batch" => {
+            "aggregation" => {
                 //至少需要date和count两个字段名
                 if ns.basic.si_cols.len() < 2 || ns.basic.keys.len() != 1 {
                     log::warn!("len si_cols < 2 or len keys != 1");

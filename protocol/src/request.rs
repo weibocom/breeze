@@ -71,7 +71,7 @@ impl crate::Request for Request {
         &mut self,
         parser: &P,
         response: &mut Command,
-    ) -> (bool, bool, u32) {
+    ) -> (bool, u32) {
         self.ctx().update_attachment(parser, response)
     }
     #[inline]
