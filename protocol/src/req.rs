@@ -74,7 +74,7 @@ pub trait Request:
         &mut self,
         parser: &P,
         response: &mut Command,
-    ) -> (bool, bool, u32);
+    ) -> (bool, u32);
     fn set_max_tries(&mut self, max_tries: u8);
     fn set_fitst_try(&mut self);
 }
