@@ -127,6 +127,10 @@ impl CallbackContext {
                 self.swap_response(resp);
             } else {
                 // vector batch场景
+                // 返回失败，则终止请求。
+                // 返回成功：
+                //   1. 先更新Si，若Si为空，则也终止请求
+                // 则更新attachment，并判断是否是最后一个。
                 if resp.ok() {
                     // 如果有attachment，更新attachment
                     let (attach_ok, last, count) = self.update_attachment(parser, &mut resp);

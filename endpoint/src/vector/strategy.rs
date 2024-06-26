@@ -40,7 +40,7 @@ impl Strategist {
         Some(match ns.basic.strategy.as_str() {
             "batch" => {
                 //至少需要date和count两个字段名
-                if ns.si.si_cols.len() < 2 || ns.basic.keys.len() != 1 {
+                if ns.basic.si_cols.len() < 2 || ns.basic.keys.len() != 1 {
                     log::warn!("len si_cols < 2 or len keys != 1");
                     return None;
                 }
@@ -52,12 +52,12 @@ impl Strategist {
                     ns.backends.iter().next().unwrap().1.len() as u32,
                     ns.basic.table_postfix.as_str().into(),
                     ns.basic.keys.clone(),
-                    ns.si.si_cols.clone(),
-                    ns.si.db_name.clone(),
-                    ns.si.db_count,
-                    ns.si.table_name.clone(),
-                    ns.si.table_count,
-                    ns.si.backends.len() as u32,
+                    ns.basic.si_cols.clone(),
+                    ns.basic.si_db_name.clone(),
+                    ns.basic.si_db_count,
+                    ns.basic.si_table_name.clone(),
+                    ns.basic.si_table_count,
+                    ns.si_backends.len() as u32,
                 ))
             }
             _ => Self::VectorTime(VectorTime::new_with_db(

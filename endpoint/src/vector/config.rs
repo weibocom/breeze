@@ -15,7 +15,7 @@ pub struct VectorNamespace {
     #[serde(default)]
     pub(crate) backends: HashMap<Years, Vec<String>>,
     #[serde(default)]
-    pub(crate) si: Si,
+    pub(crate) si_backends: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -46,35 +46,22 @@ pub struct Basic {
     pub(crate) user: String,
     #[serde(default)]
     pub(crate) region_enabled: bool,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct Si {
     #[serde(default)]
-    pub(crate) selector: String,
+    pub(crate) si_db_name: String,
     #[serde(default)]
-    pub(crate) timeout_ms_master: u32,
+    pub(crate) si_table_name: String,
     #[serde(default)]
-    pub(crate) timeout_ms_slave: u32,
+    pub(crate) si_db_count: u32,
     #[serde(default)]
-    pub(crate) db_name: String,
+    pub(crate) si_table_count: u32,
     #[serde(default)]
-    pub(crate) table_name: String,
+    pub(crate) si_user: String,
     #[serde(default)]
-    pub(crate) db_count: u32,
-    #[serde(default)]
-    pub(crate) table_count: u32,
-    #[serde(default)]
-    pub(crate) user: String,
-    #[serde(default)]
-    pub(crate) password: String,
-    #[serde(default)]
-    pub(crate) region_enabled: bool,
-    #[serde(default)]
-    pub(crate) backends: Vec<String>,
+    pub(crate) si_password: String,
     #[serde(default)]
     pub(crate) si_cols: Vec<String>,
 }
+
 impl VectorNamespace {
     #[inline]
     pub(crate) fn try_from(cfg: &str) -> Option<Self> {
@@ -106,16 +93,18 @@ impl VectorNamespace {
                     init.extend_from_slice(b.1);
                     init
                 });
-                if ns.basic.strategy.as_str() == "batch" {
-                    match ns.decrypt_password(ns.si.password.as_bytes()) {
-                        Ok(password) => ns.si.password = password,
+                if ns.basic.si_password.len() > 0 {
+                    match ns.decrypt_password(ns.basic.si_password.as_bytes()) {
+                        Ok(password) => ns.basic.si_password = password,
                         Err(e) => {
                             log::warn!("failed to decrypt si password, e:{}", e);
                             return None;
                         }
                     }
+                }
+                if ns.si_backends.len() > 0 {
                     ns.backends_flaten
-                        .extend_from_slice(ns.si.backends.as_slice());
+                        .extend_from_slice(ns.si_backends.as_slice());
                 }
                 Some(ns)
             }
