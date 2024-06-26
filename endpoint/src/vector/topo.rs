@@ -420,8 +420,8 @@ where
     #[inline]
     fn load_inner_si(&mut self) -> bool {
         // 所有的ip要都能解析出主从域名
-        let mut addrs = Vec::with_capacity(self.cfg.si.backends.len());
-        for shard in &self.cfg.si.backends {
+        let mut addrs = Vec::with_capacity(self.cfg.si_backends.len());
+        for shard in &self.cfg.si_backends {
             let shard: Vec<&str> = shard.split(",").collect();
             if shard.len() < 2 {
                 log::warn!("{} si both master and slave required.", self.cfg.service);
@@ -477,13 +477,13 @@ where
             assert_ne!(slaves.len(), 0);
             // 用户名和密码
             let res_option = ResOption {
-                token: self.cfg.si.password.clone(),
-                username: self.cfg.si.user.clone(),
+                token: self.cfg.basic.si_password.clone(),
+                username: self.cfg.basic.si_user.clone(),
             };
             let master = self.take_or_build(
                 &mut old,
                 &master_addr,
-                self.cfg.timeout_master(self.cfg.si.timeout_ms_master),
+                self.cfg.timeout_master(self.cfg.basic.timeout_ms_master),
                 res_option.clone(),
             );
             // slave
@@ -492,7 +492,7 @@ where
                 let slave = self.take_or_build(
                     &mut old,
                     &addr,
-                    self.cfg.timeout_slave(self.cfg.si.timeout_ms_slave),
+                    self.cfg.timeout_slave(self.cfg.basic.timeout_ms_slave),
                     res_option.clone(),
                 );
                 replicas.push(slave);
@@ -500,10 +500,10 @@ where
 
             use crate::PerformanceTuning;
             let shard = Shard::selector(
-                self.cfg.si.selector.tuning_mode(),
+                self.cfg.basic.selector.tuning_mode(),
                 master,
                 replicas,
-                self.cfg.si.region_enabled,
+                self.cfg.basic.region_enabled,
             );
             self.si_shard.push(shard);
         }
