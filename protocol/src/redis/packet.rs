@@ -469,6 +469,7 @@ impl Packet {
                 "packet:{self:?}"
             );
             let start = *oft;
+            println!("start:{}", start);
             //*oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
             *oft += num_skips(self.at(*oft + 1));
             let mut val: usize = 0;
@@ -494,7 +495,7 @@ impl Packet {
                 }
                 if b.is_ascii_digit() {
                     val = val * 10 + (b - b'0') as usize;
-                    if val <= std::u32::MAX as usize {
+                    if val <= std::usize::MAX as usize {
                         continue;
                     }
                 }
