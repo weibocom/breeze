@@ -99,7 +99,7 @@ impl RedisNamespace {
     pub(super) fn timeout_slave(&self) -> Timeout {
         let mut to = TO_REDIS_S;
         if self.basic.timeout_ms_slave > 0 {
-            to.adjust(self.basic.timeout_ms_master);
+            to.adjust(self.basic.timeout_ms_slave);
         }
         to
     }

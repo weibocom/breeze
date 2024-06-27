@@ -104,7 +104,7 @@ impl VectorNamespace {
     pub(crate) fn timeout_slave(&self) -> Timeout {
         let mut to = TO_VECTOR_S;
         if self.basic.timeout_ms_slave > 0 {
-            to.adjust(self.basic.timeout_ms_master);
+            to.adjust(self.basic.timeout_ms_slave);
         }
         to
     }
