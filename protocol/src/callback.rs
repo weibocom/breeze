@@ -124,27 +124,43 @@ impl CallbackContext {
             debug_assert!(!self.complete(), "{:?}", self);
             if self.attachment.is_some() {
                 // vector聚合场景
-                // 返回成功：
-                //   1. 第一轮获取si；若si获取失败（例如si为空），则终止请求
-                //   2. 后续轮次更新attachment，并判断是否是最后一轮。
-                // 返回失败，则终止请求。
-                if resp.ok() {
-                    // 更新attachment
-                    let (last, attach_count) = self.update_attachment(parser, &mut resp);
-                    last.then(|| self.set_last());
-                    (attach_count > 0).then(|| self.resp_count += attach_count);
-                } else {
-                    self.set_last();
-                }
-                if self.last() {
-                    // 中间轮次的resp没有被使用，可忽略
-                    self.swap_response(resp);
-                }
+                self.on_complete_aggregate(parser, resp);
             } else {
                 self.swap_response(resp);
             }
         }
         self.on_done();
+    }
+
+    #[inline]
+    pub fn on_complete_aggregate<P: crate::Proto>(&mut self, parser: &P, mut resp: Command) {
+        // 返回成功：
+        //   1. 第一轮获取si；若si获取失败（例如si为空），则终止请求
+        //   2. 后续轮次更新attachment，并判断是否是最后一轮。
+        // 返回失败，则终止请求。
+        if resp.ok() {
+            // 更新attachment
+            let (attach_ok, last, attach_count) = self.update_attachment(parser, &mut resp);
+            if !attach_ok {
+                // 更新attachment不成功，终止请求
+                self.set_last();
+            } else if attach_count > 0 {
+                self.resp_count += attach_count;
+            }
+            if last && !self.last() {
+                self.set_last();
+            }
+        } else {
+            self.set_last();
+        }
+        if self.last() {
+            // 中间轮次的resp没有被使用，可忽略;
+            self.swap_response(resp);
+        } else {
+            // 重置下一轮访问需要的变量
+            self.try_next = true; // 可以进入下一轮访问
+            self.set_fitst_try();
+        }
     }
 
     #[inline]
@@ -164,12 +180,12 @@ impl CallbackContext {
         &mut self,
         parser: &P,
         resp: &mut Command,
-    ) -> (bool, u32) {
+    ) -> (bool, bool, u32) {
         if self.attachment.is_some() {
             let attach = self.attachment.as_mut().expect("attach");
             return parser.update_attachment(attach, resp);
         }
-        (true, 0)
+        (true, true, 0)
     }
 
     #[inline]
@@ -180,10 +196,6 @@ impl CallbackContext {
                 // 优先筛出正常的请求，便于理解
                 // rsp.ok
                 if unsafe { self.unchecked_response().ok() } {
-                    // vector batch请求，最后一条请求已成功，不需要重试
-                    if self.attachment.is_some() {
-                        return !self.last();
-                    }
                     return false;
                 }
                 //有响应并且!ok，配置了!retry_on_rsp_notok，不需要重试，比如mysql

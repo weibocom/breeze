@@ -469,7 +469,6 @@ impl Packet {
                 "packet:{self:?}"
             );
             let start = *oft;
-            println!("start:{}", start);
             //*oft += NUM_SKIPS[self.at(*oft + 1) as usize] as usize;
             *oft += num_skips(self.at(*oft + 1));
             let mut val: usize = 0;
