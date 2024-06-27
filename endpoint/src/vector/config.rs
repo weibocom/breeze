@@ -123,17 +123,17 @@ impl VectorNamespace {
         let decrypted_string = String::from_utf8(decrypted_data)?;
         Ok(decrypted_string)
     }
-    pub(crate) fn timeout_master(&self, to_master: u32) -> Timeout {
+    pub(crate) fn timeout_master(&self) -> Timeout {
         let mut to = TO_VECTOR_M;
-        if to_master > 0 {
-            to.adjust(to_master);
+        if self.basic.timeout_ms_master > 0 {
+            to.adjust(self.basic.timeout_ms_master);
         }
         to
     }
-    pub(crate) fn timeout_slave(&self, to_slave: u32) -> Timeout {
+    pub(crate) fn timeout_slave(&self) -> Timeout {
         let mut to = TO_VECTOR_S;
-        if to_slave > 0 {
-            to.adjust(to_slave);
+        if self.basic.timeout_ms_slave > 0 {
+            to.adjust(self.basic.timeout_ms_slave);
         }
         to
     }

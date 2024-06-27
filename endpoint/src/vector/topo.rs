@@ -376,7 +376,7 @@ where
                 let master = self.take_or_build(
                     &mut old,
                     &master_addr,
-                    self.cfg.timeout_master(self.cfg.basic.timeout_ms_master),
+                    self.cfg.timeout_master(),
                     res_option.clone(),
                 );
                 // slave
@@ -385,7 +385,7 @@ where
                     let slave = self.take_or_build(
                         &mut old,
                         &addr,
-                        self.cfg.timeout_slave(self.cfg.basic.timeout_ms_slave),
+                        self.cfg.timeout_slave(),
                         res_option.clone(),
                     );
                     replicas.push(slave);
@@ -483,7 +483,7 @@ where
             let master = self.take_or_build(
                 &mut old,
                 &master_addr,
-                self.cfg.timeout_master(self.cfg.basic.timeout_ms_master),
+                self.cfg.timeout_master(),
                 res_option.clone(),
             );
             // slave
@@ -492,7 +492,7 @@ where
                 let slave = self.take_or_build(
                     &mut old,
                     &addr,
-                    self.cfg.timeout_slave(self.cfg.basic.timeout_ms_slave),
+                    self.cfg.timeout_slave(),
                     res_option.clone(),
                 );
                 replicas.push(slave);
