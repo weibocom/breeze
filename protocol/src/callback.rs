@@ -117,7 +117,7 @@ impl CallbackContext {
         }
     }
     #[inline]
-    pub fn on_complete<P: crate::Proto>(&mut self, parser: &P, mut resp: Command) {
+    pub fn on_complete<P: crate::Proto>(&mut self, parser: &P, resp: Command) {
         log::debug!("on-complete:{} resp:{}", self, resp);
         // 异步请求不关注response。
         if !self.async_mode {
