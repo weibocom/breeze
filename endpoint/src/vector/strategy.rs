@@ -201,6 +201,13 @@ mod tests {
                 password: Default::default(),
                 user: Default::default(),
                 region_enabled: Default::default(),
+                si_db_name: Default::default(),
+                si_table_name: Default::default(),
+                si_db_count: Default::default(),
+                si_table_count: Default::default(),
+                si_user: Default::default(),
+                si_password: Default::default(),
+                si_cols: Default::default(),
             },
             backends_flaten: Default::default(),
             backends: HashMap::from([(
@@ -210,7 +217,7 @@ mod tests {
                     "127.0.0.1:8081,127.0.0.2:8081".into(),
                 ],
             )]),
-            si: Default::default(),
+            si_backends: Default::default(),
         };
         let strategy = Strategist::try_from(&ns).unwrap();
         let mut buf = String::new();
