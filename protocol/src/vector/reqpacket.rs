@@ -103,10 +103,14 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         assert!(cfg.has_key, "{:?}", self);
         let key = self.parse_key(flag)?;
 
+        if self.bulks == 0 {
+            return Ok(Some(self.main_key(&key)));
+        }
+
         // 如果有field，则接下来解析fields，不管是否有field，统一先把where这个token消费掉，方便后续统一从condition位置解析
         if cfg.can_hold_field {
             self.parse_fields(flag)?;
-        } else if self.bulks > 0 && cfg.can_hold_where_condition {
+        } else if cfg.can_hold_where_condition {
             // 如果还有bulks，且该cmd可以hold where condition，此处肯定是where token，直接读出skip掉
             let token = self.next_bulk_string()?;
             if !token.equal_ignore_case(BYTES_WHERE) || self.bulks < 1 {
@@ -128,8 +132,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         log::debug!("++++ after condition parsed oft:{}", self.oft);
 
         // 返回main-key，不带sub-key、ext-key
-        let main_key_len = key.find(0, KEY_SEPERATOR).map_or(key.len(), |len| len);
-        Ok(Some(key.sub_slice(0, main_key_len)))
+        Ok(Some(self.main_key(&key)))
     }
 
     #[inline]
@@ -159,16 +162,12 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         }
     }
 
-    // #[inline]
-    // fn parse_cmd_name(&mut self) -> Result<()> {
-    //     // 第一个bulk是bulk-string类型的cmd
-    //     let cmd = self.next_bulk_string()?;
-    //     self.cmd_type = cmd.into();
-    //     if self.cmd_type.is_invalid() {
-    //         return Err(Error::FlushOnClose(ERR_UNSUPPORT_CMD.into()));
-    //     }
-    //     Ok(())
-    // }
+    /// 获取主key,不带sub-key、ext-key
+    #[inline]
+    fn main_key(&self, key: &RingSlice) -> RingSlice {
+        let main_key_len = key.find(0, KEY_SEPERATOR).map_or(key.len(), |len| len);
+        key.sub_slice(0, main_key_len)
+    }
 
     /// 读取下一个bulk string，bulks会减1
     #[inline]

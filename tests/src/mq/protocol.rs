@@ -368,6 +368,10 @@ impl Commander<TestMetric, TestMetricItem> for TestCtx {
     fn ctx(&self) -> u64 {
         todo!()
     }
+
+    fn attachment(&self) -> Option<&Vec<u8>> {
+        todo!()
+    }
 }
 
 #[test]

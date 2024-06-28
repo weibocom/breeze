@@ -26,8 +26,8 @@ impl crate::Request for Request {
         }
     }
     #[inline]
-    fn on_complete(self, resp: Command) {
-        self.ctx().on_complete(resp);
+    fn on_complete<P: crate::Proto>(self, parser: &P, resp: Command) {
+        self.ctx().on_complete(parser, resp);
     }
     #[inline]
     fn on_err(self, err: Error) {
@@ -56,6 +56,31 @@ impl crate::Request for Request {
     #[inline]
     fn quota(&mut self, quota: BackendQuota) {
         self.ctx().quota(quota);
+    }
+
+    #[inline]
+    fn attach(&mut self, attachment: Vec<u8>) {
+        self.ctx().attach(attachment);
+    }
+    #[inline]
+    fn attachment(&self) -> Option<&Vec<u8>> {
+        self.ctx().attachment()
+    }
+    #[inline]
+    fn update_attachment<P: crate::Proto>(
+        &mut self,
+        parser: &P,
+        response: &mut Command,
+    ) -> (bool, bool, u32) {
+        self.ctx().update_attachment(parser, response)
+    }
+    #[inline]
+    fn set_max_tries(&mut self, max_tries: u8) {
+        self.ctx().set_max_tries(max_tries);
+    }
+    #[inline]
+    fn set_fitst_try(&mut self) {
+        self.ctx().set_fitst_try();
     }
 }
 impl Request {

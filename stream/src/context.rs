@@ -118,4 +118,8 @@ impl<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> Commander<M, T>
     fn ctx(&self) -> u64 {
         self.ctx.flag()
     }
+    #[inline]
+    fn attachment(&self) -> Option<&Vec<u8>> {
+        self.ctx.attachment()
+    }
 }

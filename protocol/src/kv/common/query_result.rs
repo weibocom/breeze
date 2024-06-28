@@ -64,6 +64,7 @@ pub enum SetIteratorState {
     /// Iterator is in a non-empty set.
     InSet(Arc<[Column]>),
     /// Iterator is in an empty set.
+    #[allow(dead_code)]
     InEmptySet(OkPacket),
     /// Iterator is in an errored result set.
     Errored(Error),

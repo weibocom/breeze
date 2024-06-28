@@ -163,7 +163,6 @@ where
 
             *self.metrics.key() += 1;
             let mut response = ctx.take_response();
-
             self.parser.write_response(
                 &mut ResponseContext::new(&mut ctx, &self.metrics, |hash| self.top.shard_idx(hash)),
                 response.as_mut(),
