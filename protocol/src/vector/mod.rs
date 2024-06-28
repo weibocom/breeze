@@ -154,7 +154,6 @@ impl Protocol for Vector {
                 // 2. 一行或多行数据
                 // 3. 结果为空
                 if response.header.rows > 0 {
-                    w.write(format!("*2\r\n").as_bytes())?;
                     w.write(response.header.header.as_ref())?;
                     w.write(
                         format!("*{}\r\n", response.header.rows * response.header.columns)
