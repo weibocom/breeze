@@ -4,7 +4,7 @@ use std::{
     ops::Deref,
 };
 
-use crate::Endpoint;
+use crate::{CloneableAtomicUsize, Endpoint};
 
 pub(crate) mod config;
 pub mod strategy;
@@ -76,8 +76,8 @@ impl Context {
 }
 
 pub trait WriteStrategy {
-    fn new(queue_len: usize, qsize_pos: &Vec<(usize, usize)>) -> Self;
-    fn get_write_idx(&self, msg_size: usize, last_idx: Option<usize>) -> usize;
+    fn new(que_len: usize, qsize_pos: Vec<SizedQueueInfo>) -> Self;
+    fn get_write_idx(&self, msg_len: usize, last_idx: Option<usize>, tried_count: usize) -> usize;
 }
 
 pub trait ReadStrategy {
@@ -113,5 +113,31 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}/{}", self.endpoint.addr(), self.qsize)
+    }
+}
+
+/**
+ * 某个指定size的queue列表的信息；
+ */
+#[derive(Debug, Clone, Default)]
+pub struct SizedQueueInfo {
+    // 当前queue的size大小
+    pub(crate) qsize: usize,
+    // 当前size的queue在总队列中的起始位置
+    pub(crate) start_pos: usize,
+    // 当前size的queue的长度
+    pub(crate) len: usize,
+    // 当前size的queue的访问序号
+    pub(crate) sequence: CloneableAtomicUsize,
+}
+
+impl SizedQueueInfo {
+    pub(crate) fn new(qsize: usize, start_pos: usize, len: usize) -> Self {
+        Self {
+            qsize,
+            start_pos,
+            len,
+            sequence: CloneableAtomicUsize::new(0),
+        }
     }
 }
