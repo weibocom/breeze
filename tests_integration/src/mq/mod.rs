@@ -47,13 +47,13 @@ fn msgque_write() {
     let mq_client = mc_get_text_conn(MQ);
 
     let key = "k2";
-    let count = 5;
+    let count = 10;
     const QSIZES: [usize; 2] = [512, 4096];
 
     for i in 0..count {
         let msg_len = QSIZES[i % QSIZES.len()] * 8 / 10;
         let value = build_msg(msg_len);
-        println!("will set mcq msg {} with len:{}", i, value.len());
+        println!("set mcq msg {} with len:{}", i, value.len());
         mq_client.set(key, value, 0).unwrap();
     }
 
