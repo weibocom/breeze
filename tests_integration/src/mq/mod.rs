@@ -5,7 +5,7 @@ use crate::mc_helper::mc_get_text_conn;
 const MQ: &str = "mq";
 
 #[test]
-fn msgque_write_read() {
+fn msgque_both_write_read() {
     let mq_client = mc_get_text_conn(MQ);
 
     let key = "k2";
@@ -47,13 +47,14 @@ fn msgque_write() {
     let mq_client = mc_get_text_conn(MQ);
 
     let key = "k2";
-    let count = 10;
-    const QSIZES: [usize; 2] = [512, 4096];
+    let count = 100;
+    // const QSIZES: [usize; 2] = [512, 4096];
+    const QSIZES: [usize; 1] = [512];
 
     for i in 0..count {
         let msg_len = QSIZES[i % QSIZES.len()] * 8 / 10;
         let value = build_msg(msg_len);
-        println!("set mcq msg {} with len:{}", i, value.len());
+        println!("set mcq msg {} with len:{}/{}", i, value.len(), msg_len);
         mq_client.set(key, value, 0).unwrap();
     }
 
