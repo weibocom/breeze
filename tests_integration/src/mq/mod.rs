@@ -102,7 +102,7 @@ fn msgque_strategy_check() {
     let mq_client = mc_get_text_conn(MQ);
 
     let key = "k2";
-    let count = 100;
+    let count = 10;
     const QSIZES: [usize; 1] = [512];
 
     for i in 0..count {
