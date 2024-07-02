@@ -47,9 +47,8 @@ fn msgque_write() {
     let mq_client = mc_get_text_conn(MQ);
 
     let key = "k2";
-    let count = 100;
-    // const QSIZES: [usize; 2] = [512, 4096];
-    const QSIZES: [usize; 1] = [512];
+    let count = 10;
+    const QSIZES: [usize; 2] = [512, 4096];
 
     for i in 0..count {
         let msg_len = QSIZES[i % QSIZES.len()] * 8 / 10;
