@@ -32,7 +32,7 @@ impl crate::msgque::WriteStrategy for Fixed {
                 // 使用loop原因：短消息是大概率;size小于8时，list loop 性能比hash类算法性能更佳 fishermen
                 let que_info = self.get_que_info(msg_len);
                 let relative_idx = que_info.sequence.fetch_add(1, Relaxed) % que_info.len;
-                log::debug!("+++ widx/{}, {}/{:?}", msg_len, relative_idx, que_info);
+                log::debug!("+++ mcqw mlen/{}, {}/{:?}", msg_len, relative_idx, que_info);
                 return que_info.start_pos + relative_idx;
             }
             Some(last_idx) => {
