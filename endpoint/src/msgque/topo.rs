@@ -16,6 +16,7 @@ use super::{
     ReadStrategy, WriteStrategy,
 };
 use crate::dns::{DnsConfig, DnsLookup};
+use crate::msgque::SizedQueueInfo;
 use crate::{CloneAbleAtomicBool, Endpoint, Endpoints, Timeout, Topology};
 use sharding::hash::{Hash, HashKey, Hasher, Padding};
 
@@ -135,7 +136,9 @@ where
             (qid, try_next)
         } else {
             debug_assert!(req.operation().is_store());
-            let wid = self.writer_strategy.get_write_idx(req.len(), last_qid);
+            let wid = self
+                .writer_strategy
+                .get_write_idx(req.len(), last_qid, tried_count);
             ctx.update_qid(wid as u16);
             let try_next = (wid + 1) < self.writers.len();
 
@@ -258,11 +261,11 @@ where
 
         // 将按size分的ip列表按顺序放置，记录每个size的que的起始位置
         let mut ordered_ques = Vec::with_capacity(qaddrs.len());
-        let mut qsize_poses = Vec::with_capacity(qaddrs.len());
+        let mut sized_qinfos = Vec::with_capacity(qaddrs.len());
         let mut rng = thread_rng();
         for (i, mut adrs) in qaddrs.into_iter().enumerate() {
             let qs = qsizes[i];
-            qsize_poses.push((qs, ordered_ques.len()));
+            sized_qinfos.push(SizedQueueInfo::new(qs, ordered_ques.len(), adrs.len()));
 
             // 对每个size的ip列表进行随机排序
             adrs.shuffle(&mut rng);
@@ -276,7 +279,7 @@ where
 
         // 设置读写策略
         self.reader_strategy = RoundRobbin::new(self.backends.len());
-        self.writer_strategy = Fixed::new(self.writers.len(), &qsize_poses);
+        self.writer_strategy = Fixed::new(self.writers.len(), sized_qinfos);
 
         log::debug!("+++ mq loaded: {}", self);
 

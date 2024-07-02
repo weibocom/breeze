@@ -4,6 +4,7 @@ use endpoint::msgque::strategy::Fixed;
 /// 验证读写策略，离线策略
 use endpoint::msgque::strategy::RoundRobbin;
 use endpoint::msgque::ReadStrategy;
+use endpoint::msgque::SizedQueueInfo;
 use endpoint::msgque::WriteStrategy;
 use rand::random;
 
@@ -45,18 +46,23 @@ fn mq_write_strategy() {
     for i in 0..QUEUE_LEN {
         queues.push(i);
     }
-    let mut qsize_pos = Vec::with_capacity(QUEUE_SIZE_COUNT);
+    let mut sized_que_infos = Vec::with_capacity(QUEUE_SIZE_COUNT);
     for i in 0..QUEUE_SIZE_COUNT {
-        qsize_pos.push((QUEUE_SIZES[i], QUEUE_LEN / QUEUE_SIZE_COUNT * i));
+        let len = QUEUE_LEN / QUEUE_SIZE_COUNT;
+        sized_que_infos.push(SizedQueueInfo::new(
+            QUEUE_SIZES[i],
+            QUEUE_LEN / QUEUE_SIZE_COUNT * i,
+            len,
+        ));
     }
     println!("queues:{:?}", queues);
-    println!("qsize_pos:{:?}", qsize_pos);
+    println!("qsize_pos:{:?}", sized_que_infos);
 
     // 每个size请求一次，且重复请求，必须把所有ip轮流一遍
-    let wstrategy = Fixed::new(QUEUE_LEN, &qsize_pos);
+    let wstrategy = Fixed::new(QUEUE_LEN, sized_que_infos.clone());
     for i in 0..QUEUE_SIZE_COUNT {
         let msg_size = QUEUE_SIZES[i] - 10;
-        let qsize_start = qsize_pos[i].1;
+        let qsize_start = sized_que_infos.get(i).unwrap().start_pos();
 
         let retry_count = queues.len() - qsize_start;
         for retry in 0..retry_count {
@@ -64,7 +70,7 @@ fn mq_write_strategy() {
                 0 => None,
                 _ => Some(queues[qsize_start + retry - 1]),
             };
-            let idx = wstrategy.get_write_idx(msg_size, last_idx);
+            let idx = wstrategy.get_write_idx(msg_size, last_idx, retry_count);
             assert_eq!(idx, queues[qsize_start + retry]);
             // println!("msg_size:{}, retry:{}, idx:{}", msg_size, retry, idx);
         }
