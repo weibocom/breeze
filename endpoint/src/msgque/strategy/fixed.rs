@@ -36,12 +36,17 @@ impl crate::msgque::WriteStrategy for Fixed {
                 return que_info.start_pos + relative_idx;
             }
             Some(last_idx) => {
+                // 首先轮询当前size的queue列表；在当前size的queue已经轮询完后，则进入更大size的queue；
+                let idx = last_idx + 1;
                 let que_info = self.get_que_info(msg_len);
                 if tried_count < que_info.len {
-                    let relative_idx = (last_idx + tried_count - que_info.start_pos) % que_info.len;
+                    // 首先重试当前len的所有queues
+                    assert!(idx > que_info.start_pos, "{}:{:?}", idx, que_info);
+                    let relative_idx = (idx - que_info.start_pos) % que_info.len;
+                    log::debug!("+++ idx:{}, qinfo:{:?}", idx, que_info);
                     que_info.start_pos + relative_idx
                 } else {
-                    last_idx + 1
+                    idx.wrapping_rem(self.que_len)
                 }
             }
         }
