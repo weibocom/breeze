@@ -122,22 +122,37 @@ where
 #[derive(Debug, Clone, Default)]
 pub struct SizedQueueInfo {
     // 当前queue的size大小
-    pub(crate) qsize: usize,
+    qsize: usize,
     // 当前size的queue在总队列中的起始位置
-    pub(crate) start_pos: usize,
+    start_pos: usize,
     // 当前size的queue的长度
-    pub(crate) len: usize,
+    len: usize,
     // 当前size的queue的访问序号
     pub(crate) sequence: CloneableAtomicUsize,
 }
 
 impl SizedQueueInfo {
-    pub(crate) fn new(qsize: usize, start_pos: usize, len: usize) -> Self {
+    pub fn new(qsize: usize, start_pos: usize, len: usize) -> Self {
         Self {
             qsize,
             start_pos,
             len,
             sequence: CloneableAtomicUsize::new(0),
         }
+    }
+
+    #[inline]
+    pub fn qsize(&self) -> usize {
+        self.qsize
+    }
+
+    #[inline]
+    pub fn start_pos(&self) -> usize {
+        self.start_pos
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
     }
 }

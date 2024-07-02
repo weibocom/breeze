@@ -37,7 +37,7 @@ impl crate::msgque::WriteStrategy for Fixed {
             }
             Some(last_idx) => {
                 let que_info = self.get_que_info(msg_len);
-                if (tried_count < que_info.len) {
+                if tried_count < que_info.len {
                     let relative_idx = (last_idx + tried_count - que_info.start_pos) % que_info.len;
                     que_info.start_pos + relative_idx
                 } else {
