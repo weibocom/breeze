@@ -3,8 +3,8 @@ use std::cell::UnsafeCell;
 use ds::BufWriter;
 use protocol::{
     msgque::{McqText, OP_GET, OP_QUIT, OP_SET, OP_STATS, OP_VERSION},
-    AsyncBufRead, BufRead, Commander, Error, HashedCommand, Metric, Proto, RequestProcessor,
-    Stream, Writer,
+    AsyncBufRead, Attachment, BufRead, Commander, Error, HashedCommand, Metric, Proto,
+    RequestProcessor, Stream, Writer,
 };
 use sharding::hash::{Hash, HashKey};
 
@@ -369,7 +369,7 @@ impl Commander<TestMetric, TestMetricItem> for TestCtx {
         todo!()
     }
 
-    fn attachment(&self) -> Option<&Vec<u8>> {
+    fn attachment(&self) -> Option<&Attachment> {
         todo!()
     }
 }

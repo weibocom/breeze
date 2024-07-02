@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::{Command, HashedCommand};
 
 pub type Context = u64;
+pub type Attachment = [u8; 80];
 #[repr(transparent)]
 #[derive(Clone, Default)]
 pub struct BackendQuota {
@@ -67,14 +68,9 @@ pub trait Request:
     // 初始化quota
     fn quota(&mut self, quota: BackendQuota);
     // 对request增加附加信息
-    fn attach(&mut self, attachment: Vec<u8>);
+    fn attachment_mut(&mut self) -> &mut Option<Attachment>;
     // 获取附加信息
-    fn attachment(&self) -> Option<&Vec<u8>>;
-    fn update_attachment<P: crate::Proto>(
-        &mut self,
-        parser: &P,
-        response: &mut Command,
-    ) -> (bool, bool, u32);
+    fn attachment(&self) -> Option<&Attachment>;
     fn set_max_tries(&mut self, max_tries: u8);
     fn set_fitst_try(&mut self);
 }

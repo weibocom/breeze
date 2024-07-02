@@ -1,8 +1,8 @@
 use std::{marker::PhantomData, ptr::NonNull, sync::Arc};
 
 use protocol::{
-    callback::CallbackContext, request::Request, Command, Commander, HashedCommand, Metric,
-    MetricItem, Protocol,
+    callback::CallbackContext, request::Request, Attachment, Command, Commander, HashedCommand,
+    Metric, MetricItem, Protocol,
 };
 
 use crate::arena::CallbackContextArena;
@@ -119,7 +119,7 @@ impl<'a, M: Metric<T>, T: MetricItem, F: Fn(i64) -> usize> Commander<M, T>
         self.ctx.flag()
     }
     #[inline]
-    fn attachment(&self) -> Option<&Vec<u8>> {
+    fn attachment(&self) -> Option<&Attachment> {
         self.ctx.attachment()
     }
 }
