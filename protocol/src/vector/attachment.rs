@@ -44,15 +44,15 @@ pub struct VDate {
 impl VDate {
     // 2411 -> {24, 11}
     pub fn from(d: &RingSlice) -> Self {
-        let mut s: Vec<u8> = Vec::with_capacity(d.len());
-        d.copy_to_vec(&mut s);
-        let s = String::from_utf8(s).expect("Invalid UTF-8 sequence");
+        let s = d.as_string_lossy();
         let parts: Vec<&str> = s.split('-').collect();
-        assert!(parts.len() >= 2);
-        let y: u32 = parts[0].parse().expect("Failed to parse year");
-        let m: u8 = parts[1].parse().expect("Failed to parse month");
+        if parts.len() < 2 {
+            return Self { year: 0, month: 0 };
+        }
+        let y: u32 = parts[0].parse().unwrap_or_default();
+        let m: u8 = parts[1].parse().unwrap_or_default();
         Self {
-            year: y.checked_rem(100).expect("Year overflow") as u8,
+            year: y.checked_rem(100).unwrap_or_default() as u8,
             month: m,
         }
     }
@@ -63,6 +63,10 @@ impl VDate {
     #[inline]
     pub fn month(&self) -> u8 {
         self.month
+    }
+    #[inline]
+    pub fn is_valid(&self) -> bool {
+        self.month > 0 && self.year > 0
     }
 }
 
@@ -155,9 +159,13 @@ impl VecAttach {
                 return false;
             }
             if let Ok(count) = data.num(&mut oft) {
-                let date = VDate::from(&d.unwrap());
-                let si_item = SiItem::new(date.year(), date.month(), count as u16);
-                self.si.push(si_item);
+                if count > 0 {
+                    let date = VDate::from(&d.unwrap());
+                    if date.is_valid() {
+                        let si_item = SiItem::new(date.year(), date.month(), count as u16);
+                        self.si.push(si_item);
+                    }
+                }
             }
         }
         true
