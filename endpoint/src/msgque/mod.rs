@@ -76,7 +76,7 @@ impl Context {
 }
 
 pub trait WriteStrategy {
-    fn new(que_len: usize, qsize_pos: Vec<SizedQueueInfo>) -> Self;
+    fn new(que_len: usize, sized_que_infos: Vec<SizedQueueInfo>) -> Self;
     fn get_write_idx(&self, msg_len: usize, last_idx: Option<usize>, tried_count: usize) -> usize;
 }
 
