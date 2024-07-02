@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use crate::BackendQuota;
+use crate::{Attachment, BackendQuota};
 use ds::{time::Instant, AtomicWaker};
 
 use crate::{request::Request, Command, Error, HashedCommand};
@@ -48,7 +48,7 @@ pub struct CallbackContext {
     waker: *const Arc<AtomicWaker>,
     callback: CallbackPtr,
     quota: Option<BackendQuota>,
-    attachment: Option<Vec<u8>>, // 附加数据，用于辅助请求和响应，目前只有kvector在使用
+    attachment: Option<Attachment>, // 附加数据，用于辅助请求和响应，目前只有kvector在使用
 }
 
 impl CallbackContext {
@@ -346,16 +346,13 @@ impl CallbackContext {
     pub fn quota(&mut self, quota: BackendQuota) {
         self.quota = Some(quota);
     }
-
     #[inline]
-    pub fn attach(&mut self, attachment: Vec<u8>) {
-        self.attachment = Some(attachment);
-        self.last = false; // 响应行数达到需求，才修改为true
-    }
-
-    #[inline]
-    pub fn attachment(&self) -> Option<&Vec<u8>> {
+    pub fn attachment(&self) -> Option<&Attachment> {
         self.attachment.as_ref()
+    }
+    #[inline]
+    pub fn attachment_mut(&mut self) -> &mut Option<Attachment> {
+        &mut self.attachment
     }
     #[inline]
     pub fn resp_count(&self) -> u32 {

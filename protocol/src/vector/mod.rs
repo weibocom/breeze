@@ -13,14 +13,14 @@ use std::fmt::Write;
 use std::mem;
 
 use crate::{
-    Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
-    Result, Stream, Writer,
+    Attachment, Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol,
+    RequestProcessor, Result, Stream, Writer,
 };
 use chrono::NaiveDate;
 use ds::RingSlice;
 use sharding::hash::Hash;
 
-use self::attachment::Attachment;
+use self::attachment::VecAttach;
 use self::packet::RedisPack;
 use self::reqpacket::RequestPacket;
 use self::rsppacket::ResponsePacket;
@@ -117,7 +117,7 @@ impl Protocol for Vector {
         // 根据attachment写响应
         if ctx.attachment().is_some() {
             // 对于attachment，组装rsp: header(vec[0]) + *body_tokens + vec[1..]
-            let attach: Attachment = ctx.attachment().expect("attachment").as_slice().into();
+            let attach = VecAttach::attach(ctx.attachment().unwrap());
             if attach.body_token_count() > 0 {
                 w.write(attach.header())?;
                 w.write(format!("*{}\r\n", attach.body_token_count()).as_bytes())?;
@@ -193,11 +193,11 @@ impl Protocol for Vector {
     #[inline]
     fn update_attachment(
         &self,
-        attachment: &mut Vec<u8>,
+        attachment: &mut Attachment,
         response: &mut Command,
     ) -> (bool, bool, u32) {
         assert!(response.ok());
-        let mut attach = Attachment::from(attachment.as_slice());
+        let attach = VecAttach::attach_mut(attachment);
         let mut resp_count = response.count();
 
         if attach.is_empty() {
@@ -230,16 +230,7 @@ impl Protocol for Vector {
         }
         // response是否为空，这里都需要将rsp_ok置为true
         attach.rsp_ok = true;
-        let finish = attach.finish();
-        attachment.clear();
-        attachment.extend(attach.to_vec());
-        (true, finish, resp_count)
-    }
-
-    #[inline]
-    fn queried_enough_responses(&self, attachment: &[u8]) -> bool {
-        let attach = Attachment::from(attachment);
-        attach.finish
+        (true, attach.finish(), resp_count)
     }
 }
 

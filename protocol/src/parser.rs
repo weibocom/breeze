@@ -9,7 +9,7 @@ use crate::msgque::MsgQue;
 use crate::redis::Redis;
 use crate::uuid::Uuid;
 use crate::vector::Vector;
-use crate::{Error, Flag, OpCode, Operation, ResponseHeader, Result, Stream, Writer};
+use crate::{Attachment, Error, Flag, OpCode, Operation, ResponseHeader, Result, Stream, Writer};
 
 #[derive(Clone)]
 #[enum_dispatch(Proto)]
@@ -132,15 +132,12 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     #[inline]
     fn update_attachment(
         &self,
-        attachment: &mut Vec<u8>,
+        attachment: &mut Attachment,
         response: &mut Command,
     ) -> (bool, bool, u32) {
         // 默认情况下，attachment应该为空
         assert!(false, "{:?} {response}", attachment);
         (false, true, 0)
-    }
-    fn queried_enough_responses(&self, _attachment: &[u8]) -> bool {
-        true
     }
 }
 
@@ -338,7 +335,7 @@ pub trait Commander<M: Metric<I>, I: MetricItem> {
     fn request_shard(&self) -> usize;
     fn metric(&self) -> &M;
     fn ctx(&self) -> u64;
-    fn attachment(&self) -> Option<&Vec<u8>>;
+    fn attachment(&self) -> Option<&Attachment>;
 }
 
 pub enum MetricName {
