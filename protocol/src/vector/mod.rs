@@ -232,6 +232,10 @@ impl Protocol for Vector {
         attach.rsp_ok = true;
         (true, attach.finish(), resp_count)
     }
+    #[inline]
+    fn drop_attach(&self, att: Attachment) {
+        let _ = VecAttach::from(att);
+    }
 }
 
 impl Vector {

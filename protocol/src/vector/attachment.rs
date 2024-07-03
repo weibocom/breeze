@@ -88,6 +88,10 @@ impl<T: crate::Request> VAttach for T {
 
 impl VecAttach {
     #[inline(always)]
+    pub fn from(att: Attachment) -> VecAttach {
+        unsafe { std::mem::transmute(att) }
+    }
+    #[inline(always)]
     pub fn attach(att: &Attachment) -> &VecAttach {
         unsafe { std::mem::transmute(att) }
     }
