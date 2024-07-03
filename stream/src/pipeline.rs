@@ -234,6 +234,7 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> protocol::Req
         *self.first = last;
         let cb = self.top.callback();
         let req_op = cmd.operation();
+        let parser = self.parser.clone();
         let ctx = self.arena.alloc(CallbackContext::new(
             cmd,
             self.waker,
@@ -242,6 +243,7 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> protocol::Req
             last,
             self.retry_on_rsp_notok,
             self.parser.max_tries(req_op),
+            Box::new(move |att| parser.drop_attach(att)),
         ));
         let mut ctx = CallbackContextPtr::from(ctx, self.arena);
 

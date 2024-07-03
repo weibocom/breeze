@@ -139,6 +139,8 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         assert!(false, "{:?} {response}", attachment);
         (false, true, 0)
     }
+    #[inline]
+    fn drop_attach(&self, _att: Attachment) {}
 }
 
 pub trait RequestProcessor {
