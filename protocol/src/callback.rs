@@ -49,7 +49,7 @@ pub struct CallbackContext {
     callback: CallbackPtr,
     quota: Option<BackendQuota>,
     attachment: Option<Attachment>, // 附加数据，用于辅助请求和响应，目前只有kvector在使用
-    drop_attatch: Box<dyn Fn(Attachment)>,
+    drop_attach: Box<dyn Fn(Attachment)>,
 }
 
 impl CallbackContext {
@@ -62,7 +62,7 @@ impl CallbackContext {
         last: bool,
         retry_on_rsp_notok: bool,
         max_tries: u8,
-        drop_attatch: Box<dyn Fn(Attachment)>,
+        drop_attach: Box<dyn Fn(Attachment)>,
     ) -> Self {
         log::debug!("request prepared:{}", req);
         let now = Instant::now();
@@ -86,7 +86,7 @@ impl CallbackContext {
             waker,
             quota: None,
             attachment: None,
-            drop_attatch,
+            drop_attach,
         }
     }
 
@@ -385,7 +385,7 @@ impl Drop for CallbackContext {
         // 在debug环境中，设置done为false
         debug_assert_eq!(*self.done.get_mut() = false, ());
         if let Some(attachment) = self.attachment.take() {
-            (self.drop_attatch)(attachment);
+            (self.drop_attach)(attachment);
         }
     }
 }

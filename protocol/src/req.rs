@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::{Command, HashedCommand};
 
 pub type Context = u64;
-pub type Attachment = [u8; 80];
+pub type Attachment = [u8; 280];
 #[repr(transparent)]
 #[derive(Clone, Default)]
 pub struct BackendQuota {
