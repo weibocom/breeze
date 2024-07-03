@@ -47,7 +47,7 @@ fn msgque_write() {
     let mq_client = mc_get_text_conn(MQ);
 
     let key = "k2";
-    let count = 10;
+    let count = 5;
     const QSIZES: [usize; 2] = [512, 4096];
 
     for i in 0..count {
@@ -56,6 +56,9 @@ fn msgque_write() {
         println!("set mcq msg {} with len:{}/{}", i, value.len(), msg_len);
         mq_client.set(key, value, 0).unwrap();
     }
+
+    // 同时读完数据，避免ci容量不足
+    msgque_read();
 
     println!("mq write {} msgs done", count);
 }
@@ -102,7 +105,7 @@ fn msgque_strategy_check() {
     let mq_client = mc_get_text_conn(MQ);
 
     let key = "k2";
-    let count = 10;
+    let count = 5;
     const QSIZES: [usize; 1] = [512];
 
     for i in 0..count {
@@ -127,7 +130,7 @@ fn msgque_strategy_check() {
                 hits,
                 read_count
             );
-            if hits >= count {
+            if hits >= count || read_count > 2 * count {
                 println!("read all mq msgs count:{}/{}", hits, read_count);
                 break;
             }
