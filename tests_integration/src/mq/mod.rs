@@ -67,7 +67,7 @@ fn msgque_write() {
 fn msgque_read() {
     let mq_client = mc_get_text_conn(MQ);
 
-    const COUNT: i32 = 1000;
+    const COUNT: i32 = 10;
 
     let key = "k2";
     let mut read_count = 0;
@@ -75,6 +75,11 @@ fn msgque_read() {
     loop {
         let msg: Result<Option<String>, memcache::MemcacheError> = mq_client.get(key);
         read_count += 1;
+
+        if read_count > 3 * COUNT {
+            println!("stop read for too many empty rs:{}/{}", hits, read_count);
+            break;
+        }
 
         if msg.is_ok() {
             let msg = msg.unwrap();
@@ -92,10 +97,6 @@ fn msgque_read() {
                 println!("read all mq msgs count:{}/{}", hits, read_count);
                 break;
             }
-        }
-        if read_count > 3 * COUNT {
-            println!("stop read for too many empty rs:{}/{}", hits, read_count);
-            break;
         }
     }
 }
