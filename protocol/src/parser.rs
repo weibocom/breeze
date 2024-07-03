@@ -140,7 +140,9 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         (false, true, 0)
     }
     #[inline]
-    fn drop_attach(&self, _att: Attachment) {}
+    fn drop_attach(&self, _att: Attachment) {
+        panic!("unreachable");
+    }
 }
 
 pub trait RequestProcessor {

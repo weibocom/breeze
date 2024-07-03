@@ -129,9 +129,9 @@ where
 
                 let si_shard_idx = self.strategist.si_distribution().index(req.hash());
                 req.ctx_mut().shard_idx = si_shard_idx as u16;
+                req.attach_mut().vcmd = vcmd;
                 &self.si_shard[si_shard_idx]
             } else {
-                let vcmd = parse_vector_detail(**req.origin_data(), req.flag())?;
                 //根据round获取si
                 let si_items = req.attach().si();
                 assert!(si_items.len() > 0, "si_items.len() = 0");
@@ -150,8 +150,13 @@ where
                 else {
                     return Err(protocol::Error::ResponseInvalidMagic);
                 };
-                let vector_builder =
-                    SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist, limit as u64)?;
+                let vector_builder = SqlBuilder::new(
+                    &req.attach().vcmd,
+                    req.hash(),
+                    date,
+                    &self.strategist,
+                    limit as u64,
+                )?;
                 let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
 
                 //更新轮次信息

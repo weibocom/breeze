@@ -2,6 +2,8 @@ use crate::Attachment;
 use crate::Command;
 use crate::Packet;
 use ds::RingSlice;
+
+use super::VectorCmd;
 #[derive(Debug, Default)]
 #[repr(C)]
 pub struct VecAttach {
@@ -18,6 +20,7 @@ pub struct VecAttach {
     body: Vec<Vec<u8>>,
     // 查询响应的body中token数量
     si: Vec<SiItem>, // si表中查询到的数据, si字段信息在配置里存放
+    pub vcmd: VectorCmd,
 }
 
 #[derive(Debug, Default)]
@@ -114,6 +117,7 @@ impl VecAttach {
             body_token_count: 0,
             rsp_ok: false,
             si: Vec::with_capacity(6),
+            vcmd: Default::default(),
         };
     }
     #[inline]
