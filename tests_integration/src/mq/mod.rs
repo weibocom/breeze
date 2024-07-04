@@ -105,7 +105,8 @@ fn msgque_read() {
 fn msgque_strategy_check() {
     let mq_client = mc_get_text_conn(MQ);
 
-    let key = "k2";
+    // 使用独立的key，避免被读走
+    let key = "k_strategy";
     let count = 5;
     const QSIZES: [usize; 1] = [512];
 
