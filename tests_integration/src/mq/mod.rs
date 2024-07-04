@@ -123,6 +123,9 @@ fn msgque_strategy_check() {
     loop {
         let msg: Option<String> = mq_client.get(key).unwrap();
         read_count += 1;
+        if read_count > 2 * count {
+            break;
+        }
 
         if msg.is_some() {
             hits += 1;
@@ -132,7 +135,7 @@ fn msgque_strategy_check() {
                 hits,
                 read_count
             );
-            if hits >= count || read_count > 2 * count {
+            if hits >= count {
                 println!("read all mq msgs count:{}/{}", hits, read_count);
                 break;
             }
