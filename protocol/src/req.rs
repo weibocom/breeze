@@ -73,4 +73,5 @@ pub trait Request:
     fn attachment(&self) -> Option<&Attachment>;
     fn set_max_tries(&mut self, max_tries: u8);
     fn set_fitst_try(&mut self);
+    fn set_last(&mut self, last: bool);
 }

@@ -75,6 +75,9 @@ impl crate::Request for Request {
     fn set_fitst_try(&mut self) {
         self.ctx().set_fitst_try();
     }
+    fn set_last(&mut self, last: bool) {
+        self.ctx().set_last(last);
+    }
 }
 impl Request {
     #[inline]

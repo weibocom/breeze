@@ -143,18 +143,15 @@ impl CallbackContext {
         // 返回失败，则终止请求。
         if resp.ok() {
             // 更新attachment
-            let (attach_ok, last, attach_count) = self.update_attachment(parser, &mut resp);
+            let (attach_ok, attach_count) = self.update_attachment(parser, &mut resp);
             if !attach_ok {
                 // 更新attachment不成功，终止请求
-                self.set_last();
+                self.set_last(true);
             } else if attach_count > 0 {
                 self.resp_count += attach_count;
             }
-            if last && !self.last() {
-                self.set_last();
-            }
         } else {
-            self.set_last();
+            self.set_last(true);
         }
         if self.last() {
             // 中间轮次的resp没有被使用，可忽略;
@@ -183,12 +180,12 @@ impl CallbackContext {
         &mut self,
         parser: &P,
         resp: &mut Command,
-    ) -> (bool, bool, u32) {
+    ) -> (bool, u32) {
         if self.attachment.is_some() {
             let attach = self.attachment.as_mut().expect("attach");
             return parser.update_attachment(attach, resp);
         }
-        (true, true, 0)
+        (true, 0)
     }
 
     #[inline]
@@ -229,7 +226,7 @@ impl CallbackContext {
         }
 
         // 改到这里，不需要额外判断逻辑了
-        self.set_last();
+        self.set_last(true);
 
         //markdone后，req标记为已完成，那么CallbackContext和CopyBidirectional都有可能被释放
         //CopyBidirectional会提前释放，所以需要提前clone一份
@@ -362,9 +359,9 @@ impl CallbackContext {
         self.resp_count
     }
     #[inline]
-    pub fn set_last(&mut self) {
+    pub fn set_last(&mut self, last: bool) {
         // todo: 可优化为依据请求数或者响应数量判断可以设置last为true
-        self.last = true;
+        self.last = last;
     }
     #[inline]
     pub fn set_max_tries(&mut self, max_tries: u8) {

@@ -130,6 +130,7 @@ where
                 let si_shard_idx = self.strategist.si_distribution().index(req.hash());
                 req.ctx_mut().shard_idx = si_shard_idx as u16;
                 req.attach_mut().vcmd = vcmd;
+                req.set_last(false);
                 &self.si_shard[si_shard_idx]
             } else {
                 //根据round获取si
@@ -161,7 +162,7 @@ where
 
                 //更新轮次信息
                 if round == si_items.len() as u16 || req.attach().left_count <= si_item.count {
-                    req.attach_mut().finish = true;
+                    req.set_last(true);
                 }
                 req.attach_mut().left_count -= limit;
 

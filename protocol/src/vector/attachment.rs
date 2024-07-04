@@ -7,7 +7,6 @@ use super::VectorCmd;
 #[derive(Debug, Default)]
 #[repr(C)]
 pub struct VecAttach {
-    pub finish: bool,
     pub rsp_ok: bool,
     // 查询的轮次，0代表si
     pub round: u16,
@@ -109,7 +108,6 @@ impl VecAttach {
     #[inline]
     pub fn init(&mut self, left_count: u16) {
         *self = VecAttach {
-            finish: false,
             round: 0,
             left_count,
             header: Vec::with_capacity(8),
@@ -185,10 +183,6 @@ impl VecAttach {
     #[inline]
     pub fn si(&self) -> &Vec<SiItem> {
         &self.si
-    }
-    #[inline]
-    pub fn finish(&self) -> bool {
-        self.finish
     }
 }
 
