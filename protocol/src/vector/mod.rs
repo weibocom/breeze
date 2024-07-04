@@ -195,7 +195,7 @@ impl Protocol for Vector {
         &self,
         attachment: &mut Attachment,
         response: &mut Command,
-    ) -> (bool, bool, u32) {
+    ) -> (bool, u32) {
         assert!(response.ok());
         let attach = VecAttach::attach_mut(attachment);
         let mut resp_count = response.count();
@@ -219,18 +219,18 @@ impl Protocol for Vector {
             false => {
                 // 按si解析响应: 未成功获取有效si信息，返回失败，并终止后续请求
                 if response.count() < 1 {
-                    return (false, true, 0);
+                    return (false, 0);
                 }
                 // 将si信息放到attachment中
                 if !attach.attach_si(response) {
-                    return (false, true, 0);
+                    return (false, 0);
                 }
                 resp_count = 0;
             }
         }
         // response是否为空，这里都需要将rsp_ok置为true
         attach.rsp_ok = true;
-        (true, attach.finish(), resp_count)
+        (true, resp_count)
     }
     #[inline]
     fn drop_attach(&self, att: Attachment) {
