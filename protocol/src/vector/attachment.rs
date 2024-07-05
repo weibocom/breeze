@@ -47,18 +47,18 @@ impl VDate {
     // 2024-11-01 -> {24, 11}
     pub fn from(d: &RingSlice) -> Self {
         if let Some(first) = d.find(0, b'-') {
-            let y = d.try_str_num(0..first).ok_or_else(|| 0).unwrap();
+            let y = d.try_str_num(0..first).unwrap_or(0);
             if let Some(second) = d.find(first + 1, b'-') {
-                let m = d.try_str_num(first + 1..second).ok_or_else(|| 0).unwrap();
+                let m = d.try_str_num(first + 1..second).unwrap_or(0);
                 if y > 0 && m > 0 {
                     return Self {
-                        year: y.checked_rem(100).unwrap_or_default() as u8,
+                        year: y.checked_rem(100).unwrap_or(0) as u8,
                         month: m as u8,
                     };
                 }
             }
         }
-        return Self { year: 0, month: 0 };
+        Self { year: 0, month: 0 }
     }
     #[inline]
     pub fn year(&self) -> u8 {
