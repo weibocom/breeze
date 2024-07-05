@@ -63,6 +63,9 @@ where
     Req: Request,
     P: Protocol,
 {
+    fn has_attach(&self) -> bool {
+        self.strategist.more()
+    }
 }
 
 impl<E, Req, P> VectorService<E, P>
