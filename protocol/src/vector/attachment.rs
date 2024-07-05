@@ -44,19 +44,21 @@ pub struct VDate {
     pub month: u8, // month
 }
 impl VDate {
-    // 2411 -> {24, 11}
+    // 2024-11-01 -> {24, 11}
     pub fn from(d: &RingSlice) -> Self {
-        let s = d.as_string_lossy();
-        let parts: Vec<&str> = s.split('-').collect();
-        if parts.len() < 2 {
-            return Self { year: 0, month: 0 };
+        if let Some(first) = d.find(0, b'-') {
+            let y = d.try_str_num(0..first).ok_or_else(|| 0).unwrap();
+            if let Some(second) = d.find(first + 1, b'-') {
+                let m = d.try_str_num(first + 1..second).ok_or_else(|| 0).unwrap();
+                if y > 0 && m > 0 {
+                    return Self {
+                        year: y.checked_rem(100).unwrap_or_default() as u8,
+                        month: m as u8,
+                    };
+                }
+            }
         }
-        let y: u32 = parts[0].parse().unwrap_or_default();
-        let m: u8 = parts[1].parse().unwrap_or_default();
-        Self {
-            year: y.checked_rem(100).unwrap_or_default() as u8,
-            month: m,
-        }
+        return Self { year: 0, month: 0 };
     }
     #[inline]
     pub fn year(&self) -> u8 {
