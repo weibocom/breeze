@@ -113,7 +113,7 @@ impl VecAttach {
             round: 0,
             left_count,
             header: Vec::with_capacity(8),
-            body: Vec::with_capacity(left_count.into()),
+            body: Vec::with_capacity(12),
             body_token_count: 0,
             rsp_ok: false,
             si: Vec::with_capacity(6),
