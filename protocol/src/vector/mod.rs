@@ -114,32 +114,6 @@ impl Protocol for Vector {
             return Ok(());
         }
 
-        // 根据attachment写响应
-        if ctx.attachment().is_some() {
-            // 对于attachment，组装rsp: header(vec[0]) + *body_tokens + vec[1..]
-            let attach = VecAttach::attach(ctx.attachment().unwrap());
-            if attach.body_token_count() > 0 {
-                w.write(attach.header())?;
-                w.write(format!("*{}\r\n", attach.body_token_count()).as_bytes())?;
-                for b in attach.body() {
-                    w.write(b.as_slice())?;
-                }
-            } else {
-                if let Some(response) = response {
-                    if response.ok() {
-                        // 返回空
-                        w.write("$-1\r\n".as_bytes())?;
-                    } else {
-                        // 对于非ok的响应，需要构建rsp，发给client
-                        w.write("-ERR ".as_bytes())?;
-                        w.write_slice(response, 0)?; // mysql返回的错误信息
-                        w.write("\r\n".as_bytes())?;
-                    }
-                }
-            }
-            return Ok(());
-        }
-
         if let Some(response) = response {
             log::debug!("+++ send to client {:?} => {:?}", ctx.request(), response);
             if !response.ok() {
@@ -147,20 +121,34 @@ impl Protocol for Vector {
                 w.write("-ERR ".as_bytes())?;
                 w.write_slice(response, 0)?; // mysql返回的错误信息
                 w.write("\r\n".as_bytes())?;
-                return Ok(());
             } else {
-                // response已封装为redis协议。正常响应有三种：
-                // 1. 只返回影响的行数
-                // 2. 一行或多行数据
-                // 3. 结果为空
-                if response.header.rows > 0 {
-                    w.write(response.header.header.as_ref())?;
-                    w.write(
-                        format!("*{}\r\n", response.header.rows * response.header.columns)
-                            .as_bytes(),
-                    )?;
+                if ctx.attachment().is_some() {
+                    // 有attachment: 组装rsp: header(vec[0]) + *body_tokens + vec[1..]
+                    let attach = VecAttach::attach(ctx.attachment().unwrap());
+                    if attach.body_token_count() > 0 {
+                        w.write(attach.header())?;
+                        w.write(format!("*{}\r\n", attach.body_token_count()).as_bytes())?;
+                        for b in attach.body() {
+                            w.write(b.as_slice())?;
+                        }
+                    } else {
+                        // 返回空
+                        w.write("$-1\r\n".as_bytes())?;
+                    }
+                } else {
+                    // 无attachment: response已封装为redis协议。正常响应有三种：
+                    // 1. 只返回影响的行数
+                    // 2. 一行或多行数据
+                    // 3. 结果为空
+                    if response.header.rows > 0 {
+                        w.write(response.header.header.as_ref())?;
+                        w.write(
+                            format!("*{}\r\n", response.header.rows * response.header.columns)
+                                .as_bytes(),
+                        )?;
+                    }
+                    w.write_slice(response, 0)?; // value
                 }
-                w.write_slice(response, 0)?; // value
             }
             return Ok(());
         }
