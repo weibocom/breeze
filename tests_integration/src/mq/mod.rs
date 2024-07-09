@@ -108,7 +108,7 @@ fn msgque_strategy_check() {
     // 使用独立的key，避免被读走
     let key = "k_strategy";
     let count = 5;
-    const QSIZES: [usize; 1] = [512];
+    const QSIZES: [usize; 1] = [128];
 
     for i in 0..count {
         let msg_len = QSIZES[i % QSIZES.len()] * 8 / 10;
@@ -139,6 +139,8 @@ fn msgque_strategy_check() {
                 println!("read all mq msgs count:{}/{}", hits, read_count);
                 break;
             }
+        } else {
+            println!("read empty for key: {}", key);
         }
     }
 
