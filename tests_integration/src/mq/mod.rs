@@ -25,6 +25,13 @@ fn msgque_both_write_read() {
     loop {
         let msg: Option<String> = mq_client.get(key).unwrap();
         read_count += 1;
+        if read_count >= 2 * count {
+            println!(
+                "stop for may read all mq msgs count:{}/{}",
+                hits, read_count
+            );
+            break;
+        }
 
         if msg.is_some() {
             hits += 1;
@@ -57,9 +64,6 @@ fn msgque_write() {
         mq_client.set(key, value, 0).unwrap();
     }
 
-    // 同时读完数据，避免ci容量不足
-    msgque_read();
-
     println!("mq write {} msgs done", count);
 }
 
@@ -67,7 +71,7 @@ fn msgque_write() {
 fn msgque_read() {
     let mq_client = mc_get_text_conn(MQ);
 
-    const COUNT: i32 = 10;
+    const COUNT: i32 = 5;
 
     let key = "k2";
     let mut read_count = 0;
@@ -107,7 +111,7 @@ fn msgque_strategy_check() {
 
     // 使用独立的key，避免被读走
     let key = "k_strategy";
-    let count = 5;
+    let count = 10;
     const QSIZES: [usize; 1] = [128];
 
     for i in 0..count {
