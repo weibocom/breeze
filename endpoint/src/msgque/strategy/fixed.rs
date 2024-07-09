@@ -29,14 +29,14 @@ impl crate::msgque::WriteStrategy for Fixed {
     fn get_write_idx(&self, msg_len: usize, last_idx: Option<usize>, tried_count: usize) -> usize {
         match last_idx {
             None => {
-                // 使用loop原因：短消息是大概率;size小于8时，list loop 性能比hash类算法性能更佳 fishermen
                 let que_info = self.get_que_info(msg_len);
+                // 第一次写队列消息，永远使用对应msg size的que list中的队列，且循环使用
                 let relative_idx = que_info.sequence.fetch_add(1, Relaxed) % que_info.len;
                 log::debug!("+++ mcqw mlen/{}, {}/{:?}", msg_len, relative_idx, que_info);
                 return que_info.start_pos + relative_idx;
             }
             Some(last_idx) => {
-                // 首先轮询当前size的queue列表；在当前size的queue已经轮询完后，则进入更大size的queue；
+                // 重试写队列消息时，首先轮询当前size的queue列表；在当前size的queue已经轮询完后，则进入更大size的queue；
                 let idx = last_idx + 1;
                 let que_info = self.get_que_info(msg_len);
                 if tried_count < que_info.len {
@@ -55,6 +55,7 @@ impl crate::msgque::WriteStrategy for Fixed {
 
 impl Fixed {
     fn get_que_info(&self, msg_len: usize) -> &SizedQueueInfo {
+        // 使用loop原因：短消息是大概率;size小于8时，list loop 性能比hash类算法性能更佳 fishermen
         for qi in self.sized_que_infos.iter() {
             if qi.qsize > msg_len {
                 return qi;
