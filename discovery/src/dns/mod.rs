@@ -183,7 +183,16 @@ impl DnsCache {
             let chunk = (len + (PERIOD - 1)) / PERIOD;
             // 因为chunk是动态变化的，所以不能用last_idx + chunk
             let end = ((ith + 1) * chunk).min(len);
-            assert!(self.last_idx <= end);
+            assert!(
+                self.last_idx <= end,
+                "addr:{:p} last_idx:{}, end:{}, len:{}, ith:{} chunk:{}",
+                &self,
+                self.last_idx,
+                end,
+                len,
+                ith,
+                chunk
+            );
             let iter = self.hosts.hosts[self.last_idx..end].iter_mut();
             self.last_idx = end;
             if self.last_idx == len {
