@@ -148,13 +148,13 @@ fn msgque_strategy_check() {
         }
     }
 
-    // let hits_percent = (hits as f64) / (read_count as f64);
-    // assert!(
-    //     hits_percent >= 0.9,
-    //     "check read strategy:{}/{}",
-    //     hits,
-    //     read_count
-    // );
+    let hits_percent = (hits as f64) / (read_count as f64);
+    assert!(
+        hits_percent >= 0.9,
+        "check read strategy:{}/{}",
+        hits,
+        read_count
+    );
 }
 
 /// 构建所需长度的msg

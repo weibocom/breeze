@@ -1,4 +1,5 @@
 use core::fmt;
+use std::sync::atomic::Ordering::Relaxed;
 use std::{
     fmt::{Display, Formatter},
     ops::Deref,
@@ -154,5 +155,21 @@ impl SizedQueueInfo {
     #[inline]
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    // 根据当前的sequence，轮询获取本size内下一次应该请求的queue idx
+    #[inline]
+    pub fn next_idx(&self) -> usize {
+        let relative_idx = self.sequence.fetch_add(1, Relaxed) % self.len;
+        return self.start_pos + relative_idx;
+    }
+
+    // 根据上一次请求的idx，获取本size内下一次应该请求的queue idx
+    #[inline]
+    pub fn next_retry_idx(&self, last_idx: usize) -> usize {
+        assert!(last_idx >= self.start_pos, "{}:{:?}", last_idx, self);
+        let idx = last_idx + 1;
+        let relative_idx = (idx - self.start_pos) % self.len;
+        self.start_pos + relative_idx
     }
 }
