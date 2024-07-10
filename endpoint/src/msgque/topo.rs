@@ -136,11 +136,10 @@ where
             (qid, try_next)
         } else {
             debug_assert!(req.operation().is_store());
-            let wid = self
-                .writer_strategy
-                .get_write_idx(req.len(), last_qid, tried_count);
+            let (wid, try_next) =
+                self.writer_strategy
+                    .get_write_idx(req.len(), last_qid, tried_count);
             ctx.update_qid(wid as u16);
-            let try_next = (wid + 1) < self.writers.len();
 
             assert!(wid < self.writers.len(), "{}/{}", wid, self);
             (*self.writers.get(wid).expect("mq write"), try_next)

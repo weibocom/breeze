@@ -78,7 +78,12 @@ impl Context {
 
 pub trait WriteStrategy {
     fn new(que_len: usize, sized_que_infos: Vec<SizedQueueInfo>) -> Self;
-    fn get_write_idx(&self, msg_len: usize, last_idx: Option<usize>, tried_count: usize) -> usize;
+    fn get_write_idx(
+        &self,
+        msg_len: usize,
+        last_idx: Option<usize>,
+        tried_count: usize,
+    ) -> (usize, bool);
 }
 
 pub trait ReadStrategy {
@@ -157,7 +162,7 @@ impl SizedQueueInfo {
         self.len
     }
 
-    // 根据当前的sequence，轮询获取本size内下一次应该请求的queue idx
+    // 根据当前的sequence，“轮询”获取本size内下一次应该请求的queue idx
     #[inline]
     pub fn next_idx(&self) -> usize {
         let relative_idx = self.sequence.fetch_add(1, Relaxed) % self.len;

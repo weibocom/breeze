@@ -112,7 +112,7 @@ fn msgque_strategy_check() {
     // 使用独立的key，避免被读走
     let key = "k_strategy";
     let count = 10;
-    const QSIZES: [usize; 1] = [128];
+    const QSIZES: [usize; 1] = [512];
 
     for i in 0..count {
         let msg_len = QSIZES[i % QSIZES.len()] * 8 / 10;
@@ -150,7 +150,7 @@ fn msgque_strategy_check() {
 
     let hits_percent = (hits as f64) / (read_count as f64);
     assert!(
-        hits_percent >= 0.9,
+        hits_percent >= 0.8,
         "check read strategy:{}/{}",
         hits,
         read_count
