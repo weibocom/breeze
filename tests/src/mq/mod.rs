@@ -70,8 +70,9 @@ fn mq_write_strategy() {
                 0 => None,
                 _ => Some(queues[qsize_start + retry - 1]),
             };
-            let idx = wstrategy.get_write_idx(msg_size, last_idx, retry_count);
+            let (idx, try_next) = wstrategy.get_write_idx(msg_size, last_idx, retry);
             assert_eq!(idx, queues[qsize_start + retry]);
+            assert_eq!(try_next, retry < retry_count - 1);
             // println!("msg_size:{}, retry:{}, idx:{}", msg_size, retry, idx);
         }
     }
