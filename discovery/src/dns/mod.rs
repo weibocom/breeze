@@ -185,13 +185,14 @@ impl DnsCache {
             let end = ((ith + 1) * chunk).min(len);
             assert!(
                 self.last_idx <= end,
-                "addr:{:p} last_idx:{}, end:{}, len:{}, ith:{} chunk:{}",
+                "addr:{:p} last_idx:{}, end:{}, len:{}, ith:{} chunk:{} hosts:{:?}",
                 &self,
                 self.last_idx,
                 end,
                 len,
                 ith,
-                chunk
+                chunk,
+                self.hosts.hosts
             );
             let iter = self.hosts.hosts[self.last_idx..end].iter_mut();
             self.last_idx = end;
