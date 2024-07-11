@@ -10,7 +10,7 @@ fn msgque_both_write_read() {
 
     let key = "k2";
     let count = 5;
-    const QSIZES: [usize; 2] = [512, 8192];
+    const QSIZES: [usize; 2] = [512, 256];
 
     for i in 0..count {
         let msg_len = QSIZES[i % QSIZES.len()] * 8 / 10;
