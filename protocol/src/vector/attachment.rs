@@ -176,7 +176,7 @@ impl VecAttach {
                 }
             }
         }
-        true
+        self.si.len() > 0
     }
     #[inline]
     pub fn has_si(&mut self) -> bool {
