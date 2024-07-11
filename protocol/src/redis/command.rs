@@ -56,7 +56,7 @@ impl CommandHasher {
             }
             h.hash(slice[i]);
         }
-        Err(crate::Error::ProtocolIncomplete)
+        Err(crate::Error::ProtocolIncomplete(0))
     }
 }
 
