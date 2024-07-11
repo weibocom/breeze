@@ -9,8 +9,7 @@ use std::sync::atomic::Ordering::Relaxed;
 #[derive(Debug, Clone, Default)]
 pub struct RoundRobbin {
     que_len: usize,
-    // 低8bits放连续hits次数，其他bits放索引位置
-    // TODO 写改为轮询写，读也对应改为轮询读，同时miss后不重试，看效果 fishermen
+    // 去掉8bit的盯读策略，写改为轮询写，读也对应改为轮询读，同时miss后不重试，ip72看效果明显，后续继续观察 fishermen
     current_pos: CloneableAtomicUsize,
 }
 
@@ -29,6 +28,8 @@ impl ReadStrategy for RoundRobbin {
     fn get_read_idx(&self, _last_idx: Option<usize>) -> usize {
         let origin_pos = self.current_pos.fetch_add(1, Relaxed);
         origin_pos.wrapping_rem(self.que_len)
+
+        // TODO 去掉8bit盯读策略，先注释掉，目前灰度观察OK，线上没问题后，再删除，预计2024.9后可以清理 fishermen
         // let pos = match last_idx {
         //     None => origin_pos,
         //     Some(lidx) => {
@@ -42,7 +43,6 @@ impl ReadStrategy for RoundRobbin {
         //         }
         //     }
         // };
-
         // pos.que_idx(self.que_len)
     }
 }
