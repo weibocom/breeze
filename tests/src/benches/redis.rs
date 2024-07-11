@@ -17,23 +17,25 @@ pub(super) fn parse(c: &mut Criterion) {
     //        });
     //    });
     //});
-    group.bench_function("skip_all_bulk", |b| {
-        b.iter(|| {
-            black_box({
-                let mut oft = 0;
-                while oft < stream.len() {
-                    stream.skip_all_bulk(&mut oft).expect("error not allowed");
-                }
-                assert_eq!(oft, stream.len());
-            });
-        });
-    });
+    // group.bench_function("skip_all_bulk", |b| {
+    //     b.iter(|| {
+    //         black_box({
+    //             let mut oft = 0;
+    //             while oft < stream.len() {
+    //                 stream.skip_all_bulk(&mut oft).expect("error not allowed");
+    //             }
+    //             assert_eq!(oft, stream.len());
+    //         });
+    //     });
+    // });
     let mut ctx = protocol::redis::ResponseContext { oft: 0, bulk: 0 };
     group.bench_function("skip_multibulks", |b| {
         b.iter(|| {
             black_box({
                 while ctx.oft < stream.len() {
-                    stream.skip_multibulks(&mut ctx).expect("error not allowed");
+                    stream
+                        .skip_multibulks_with_ctx(&mut ctx)
+                        .expect("error not allowed");
                 }
                 assert_eq!(ctx.oft, stream.len());
             });
@@ -44,12 +46,12 @@ pub(super) fn parse(c: &mut Criterion) {
 }
 
 pub(super) fn parse_num(c: &mut Criterion) {
-    let text = b"$2\r\n$-1$0\r\n$3\r\n$15\r\n$8\r\n$64\r\n$1\r\n$128\r\n$19\r\n$3\r\n$8\r\n$9\r\n$128\r\n$46\r\n$128\r\n";
+    // let text = b"$2\r\n$-1$0\r\n$3\r\n$15\r\n$8\r\n$64\r\n$1\r\n$128\r\n$19\r\n$3\r\n$8\r\n$9\r\n$128\r\n$46\r\n$128\r\n";
     let data = b"*2\r\n*3\r\n*15\r\n*8\r\n*64\r\n*106\r\n*128\r\n*19\r\n*3\r\n*8\r\n*9\r\n*128\r\n*46\r\n*128\r\n*34\r\n";
     let stream: RingSlice = data[..].into();
-    let text: RingSlice = text[..].into();
+    // let text: RingSlice = text[..].into();
     let stream: Packet = stream.into();
-    let text: Packet = text.into();
+    // let text: Packet = text.into();
     let mut group = c.benchmark_group("parser_num");
     group.bench_function("num_of_bulks", |b| {
         b.iter(|| {
@@ -73,16 +75,16 @@ pub(super) fn parse_num(c: &mut Criterion) {
             });
         });
     });
-    group.bench_function("string", |b| {
-        b.iter(|| {
-            black_box({
-                let mut oft = 0;
-                while oft < text.len() {
-                    text.num_of_string(&mut oft).expect("error not allowed");
-                }
-                assert_eq!(oft, text.len());
-            });
-        });
-    });
+    // group.bench_function("string", |b| {
+    //     b.iter(|| {
+    //         black_box({
+    //             let mut oft = 0;
+    //             while oft < text.len() {
+    //                 text.num_of_string(&mut oft).expect("error not allowed");
+    //             }
+    //             assert_eq!(oft, text.len());
+    //         });
+    //     });
+    // });
     group.finish();
 }

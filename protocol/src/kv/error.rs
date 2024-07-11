@@ -33,7 +33,7 @@ impl Into<crate::Error> for Error {
                 log::warn!("found unhandle response: {}", packet.utf8());
                 crate::Error::ResponseProtocolInvalid
             }
-            Self::ProtocolIncomplete => crate::Error::ProtocolIncomplete,
+            Self::ProtocolIncomplete => crate::Error::ProtocolIncomplete(0),
         }
     }
 }
