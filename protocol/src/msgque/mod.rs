@@ -85,7 +85,7 @@ impl Protocol for MsgQue {
         }
         let head4 = data.u32_le(0);
         let ok = match head4 {
-            END => true, // TODO get miss 后，不重试，因为写已经改为了轮询写，每个节点概率相同，观察效果 fishermen
+            END => true, // get miss 后，改为不重试，因为写已经改为了轮询写，每个节点概率相同，观察效果 2024.7.11 fishermen
             VALUE => {
                 // VALUE <key> <flags> <bytes> [<cas unique>]\r\n
                 let val_len = Self::val_len(data, 4, lfcr)?;
