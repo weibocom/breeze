@@ -177,7 +177,7 @@ impl Protocol for Vector {
 
     // 将中间响应放到attachment中，方便后续继续查询
     // 先收集si信息，再收集body
-    // 返回值：(本次更新是否成功，是否finish，本轮收到的非si的response数量)
+    // 返回值：(本次更新是否成功，本轮收到的非si的response数量)
     #[inline]
     fn update_attachment(
         &self,
