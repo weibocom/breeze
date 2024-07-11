@@ -74,28 +74,19 @@ impl Redis {
         let data: Packet = s.slice().into();
         let ctx: &mut ResponseContext = transmute(s.context());
         log::debug!("+++ will parse redis rsp:{:?}", data);
-        // data.check_onetoken(*oft)?;
 
         match data.at(0) {
             b'-' | b':' | b'+' => data.line(&mut ctx.oft)?,
-            b'$' => ctx.oft += data.num_of_string(&mut ctx.oft)? + 2,
-            b'*' => data.skip_multibulks(ctx)?,
+            b'$' => data.skip_string_check(&mut ctx.oft)?,
+            b'*' => data.skip_multibulks_with_ctx(ctx)?,
             _ => return Err(RedisError::RespInvalid.into()),
         }
 
         let oft = ctx.oft;
-        ctx.oft = 0; // 响应消息是b'$'，若数据未接收完整，下次需要从起始位置开始解析
-        match oft <= data.len() {
-            true => Ok(Some(Command::from_ok(s.take(oft)))),
-            false => Err(Error::ProtocolIncomplete),
-        }
-        // Ok((*oft <= data.len()).then(|| Command::from_ok(s.take(*oft))))
-    }
-    #[inline(always)]
-    fn left_bytes<S: Stream>(&self, s: &mut S) -> usize {
-        let ctx = transmute(s.context());
-        // 64是经验值
-        ctx.bulk * 64
+        assert!(oft != 0);
+        assert!(oft <= data.len());
+        ctx.oft = 0;
+        Ok(Some(Command::from_ok(s.take(oft))))
     }
 }
 
@@ -117,7 +108,7 @@ impl Protocol for Redis {
         let mut packet = RequestPacket::new(stream);
         match self.parse_request_inner(&mut packet, alg, process) {
             Ok(_) => Ok(()),
-            Err(Error::ProtocolIncomplete) => {
+            Err(Error::ProtocolIncomplete(0)) => {
                 // 如果解析数据不够，提前reserve stream的空间
                 packet.reserve_stream_buff();
                 Ok(())
@@ -134,18 +125,10 @@ impl Protocol for Redis {
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         match self.parse_response_inner(data) {
             Ok(cmd) => Ok(cmd),
-            Err(Error::ProtocolIncomplete) => {
-                let ctx = transmute(data.context());
-                let oft = ctx.oft;
-                //assert!(oft + 3 >= data.len(), "oft:{} => {:?}", oft, data.slice());
-                if ctx.bulk > 0 {
-                    // 响应消息是array场景
-                    let left = self.left_bytes(data);
+            Err(Error::ProtocolIncomplete(left)) => {
+                if left > 0 {
                     data.reserve(left);
-                } else if oft > data.len() {
-                    data.reserve(oft - data.len());
                 }
-
                 Ok(None)
             }
             e => e,

@@ -11,7 +11,8 @@ pub enum Error {
     ChanDisabled,
     ChanWriteClosed,
     ChanReadClosed,
-    ProtocolIncomplete,
+    //协议完整至少还需要x个字节
+    ProtocolIncomplete(usize),
     RequestInvalidMagic,
     ResponseInvalidMagic,
     RequestProtocolInvalid,

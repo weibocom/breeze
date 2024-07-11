@@ -53,7 +53,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if self.oft <= self.data.len() {
             return Ok(());
         }
-        return Err(super::Error::ProtocolIncomplete);
+        return Err(super::Error::ProtocolIncomplete(0));
     }
 
     #[inline]
@@ -229,7 +229,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 ReqPacketState::Val => {
                     m = self.oft + vlen;
                     if m >= self.data.len() {
-                        return Err(super::Error::ProtocolIncomplete);
+                        return Err(super::Error::ProtocolIncomplete(0));
                     }
                     if self.data.at(m) == CR {
                         self.skip(vlen)?;
@@ -251,7 +251,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             // 当前字节处理完毕，继续下一个字节
             self.skip(1)?;
         }
-        Err(super::Error::ProtocolIncomplete)
+        Err(super::Error::ProtocolIncomplete(0))
     }
 
     #[inline]
@@ -324,7 +324,7 @@ impl Packet for RingSlice {
             *oft = idx + 2;
             Ok(())
         } else {
-            Err(crate::Error::ProtocolIncomplete)
+            Err(crate::Error::ProtocolIncomplete(0))
         }
     }
 
@@ -351,7 +351,7 @@ impl Packet for RingSlice {
                 return Ok(());
             }
         }
-        Err(super::Error::ProtocolIncomplete)
+        Err(super::Error::ProtocolIncomplete(0))
     }
 }
 // mcq 解析时状态

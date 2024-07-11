@@ -81,7 +81,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         if self.oft <= self.data.len() {
             return Ok(());
         }
-        return Err(super::Error::ProtocolIncomplete);
+        return Err(super::Error::ProtocolIncomplete(0));
     }
 
     #[inline]
@@ -331,7 +331,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 ReqPacketState::Val => {
                     m = self.oft + self.vlen;
                     if m >= self.data.len() {
-                        return Err(super::Error::ProtocolIncomplete);
+                        return Err(super::Error::ProtocolIncomplete(0));
                     }
                     if self.data.at(m) == CR {
                         self.skip(self.vlen)?;
@@ -435,7 +435,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
                 }
             }
         }
-        Err(super::Error::ProtocolIncomplete)
+        Err(super::Error::ProtocolIncomplete(0))
     }
 
     #[inline]
