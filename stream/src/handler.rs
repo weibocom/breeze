@@ -27,6 +27,7 @@ pub struct Handler<'r, Req, P, S> {
 
     // 连续多少个cycle检查到当前没有请求发送，则发送一个ping
     ping_cycle: u16,
+    name: Path,
 }
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
 where
@@ -60,6 +61,7 @@ where
 {
     pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, path: Path) -> Self {
         data.enable();
+        let name = path.clone();
         let rtt = path.rtt("req");
         Self {
             data,
@@ -71,6 +73,7 @@ where
             num: Number::default(),
             req_buf: Vec::with_capacity(4),
             ping_cycle: 0,
+            name,
         }
     }
     // 检查连接是否存在
@@ -134,6 +137,9 @@ where
         while self.s.len() > 0 {
             let l = self.s.len();
             if let Some(cmd) = self.parser.parse_response(&mut self.s)? {
+                if self.pending.len() == 0 {
+                    panic!("unexpect response handler:{:?}", &self);
+                }
                 let (req, start) = self.pending.pop_front().expect("take response");
                 self.num.rx();
                 // 统计请求耗时。
@@ -246,8 +252,9 @@ impl<'r, Req, P, S: Debug> Debug for Handler<'r, Req, P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "handler num:{:?}  p_req:{} {} {} buf:{:?} data:{:?}",
+            "handler num:{:?} resource:{:?} p_req:{} {} {} buf:{:?} data:{:?}",
             self.num,
+            self.name,
             self.pending.len(),
             self.rtt,
             self.host_metric,
