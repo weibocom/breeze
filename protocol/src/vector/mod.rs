@@ -177,16 +177,13 @@ impl Protocol for Vector {
 
     // 将中间响应放到attachment中，方便后续继续查询
     // 先收集si信息，再收集body
-    // 返回值：(本次更新是否成功，本轮收到的非si的response数量)
+    // 返回值：是否需要继续查询
     #[inline]
-    fn update_attachment(
-        &self,
-        attachment: &mut Attachment,
-        response: &mut Command,
-    ) -> (bool, u32) {
+    fn update_attachment(&self, attachment: &mut Attachment, response: &mut Command) -> bool {
         assert!(response.ok());
         let attach = VecAttach::attach_mut(attachment);
-        let mut resp_count = response.count();
+        //收到响应就算ok，响应有问题也不会发送到topo了
+        attach.rsp_ok = true;
 
         if attach.is_empty() {
             // TODO 先打通，此处的内存操作需要考虑优化 fishermen
@@ -203,22 +200,11 @@ impl Protocol for Vector {
                     let header = &response.header;
                     attach.attach_body(response.data().0.to_vec(), header.rows, header.columns);
                 }
+                attach.left_count == 0
             }
-            false => {
-                // 按si解析响应: 未成功获取有效si信息，返回失败，并终止后续请求
-                if response.count() < 1 {
-                    return (false, 0);
-                }
-                // 将si信息放到attachment中
-                if !attach.attach_si(response) {
-                    return (false, 0);
-                }
-                resp_count = 0;
-            }
+            // 按si解析响应: 未成功获取有效si信息或者解析si失败，并终止后续请求
+            false => response.count() == 0 || !attach.attach_si(response),
         }
-        // response是否为空，这里都需要将rsp_ok置为true
-        attach.rsp_ok = true;
-        (true, resp_count)
     }
     #[inline]
     fn drop_attach(&self, att: Attachment) {

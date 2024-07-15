@@ -41,7 +41,6 @@ pub struct CallbackContext {
     first: bool,                         // 当前请求是否是所有子请求的第一个
     last: bool,                          // 当前请求是否是所有子请求的最后一个
     tries: AtomicU8,
-    resp_count: u32, // 已收到的响应消息条数，目前只有kvector在使用
     request: HashedCommand,
     response: MaybeUninit<Command>,
     start: Instant, // 请求的开始时间
@@ -82,7 +81,6 @@ impl CallbackContext {
             callback: cb,
             start: now,
             tries: 0.into(),
-            resp_count: 0,
             waker,
             quota: None,
             attachment: None,
@@ -143,13 +141,12 @@ impl CallbackContext {
         // 返回失败，则终止请求。
         if resp.ok() {
             // 更新attachment
-            let (attach_ok, attach_count) = self.update_attachment(parser, &mut resp);
-            if !attach_ok {
-                // 更新attachment不成功，终止请求
+            let attach = self.attachment.as_mut().expect("attach");
+            let last = parser.update_attachment(attach, &mut resp);
+            if last {
                 self.set_last(true);
-            } else if attach_count > 0 {
-                self.resp_count += attach_count;
             }
+            // 更新attachment不成功，或者响应数足够,终止请求
         } else {
             self.set_last(true);
         }
@@ -173,19 +170,6 @@ impl CallbackContext {
                 None
             }
         }
-    }
-
-    #[inline]
-    pub(crate) fn update_attachment<P: crate::parser::Proto>(
-        &mut self,
-        parser: &P,
-        resp: &mut Command,
-    ) -> (bool, u32) {
-        if self.attachment.is_some() {
-            let attach = self.attachment.as_mut().expect("attach");
-            return parser.update_attachment(attach, resp);
-        }
-        (true, 0)
     }
 
     #[inline]
@@ -353,10 +337,6 @@ impl CallbackContext {
     #[inline]
     pub fn attachment_mut(&mut self) -> &mut Option<Attachment> {
         &mut self.attachment
-    }
-    #[inline]
-    pub fn resp_count(&self) -> u32 {
-        self.resp_count
     }
     #[inline]
     pub fn set_last(&mut self, last: bool) {
