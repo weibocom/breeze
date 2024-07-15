@@ -168,10 +168,6 @@ impl DnsCache {
     // 每16个tick执行一次empty，避免某一次刷新未解释成功导致需要等待下一个周期。
     // 其他情况下，每个tick只会刷新部分chunk数据。
     fn iter(&mut self) -> HostRecordIter<'_> {
-        const PERIOD: usize = 128;
-        let ith = self.cycle % PERIOD;
-        // 如果当前是走空搜索，下一次扫描的时候会搜索2个chunk.
-        self.cycle += 1;
         // 16是一个经验值。
         if self.hosts.len() > self.last_len || (self.cycle % 16 == 0 && self.hosts.has_empty()) {
             self.last_len = self.hosts.len();
@@ -180,19 +176,21 @@ impl DnsCache {
             // 刷新从上个idx开始的一个chunk长度的数据
             assert!(self.last_len == self.hosts.len());
             let len = self.last_len;
+            const PERIOD: usize = 128;
+            let ith = self.cycle % PERIOD;
+            self.cycle += 1;
             let chunk = (len + (PERIOD - 1)) / PERIOD;
             // 因为chunk是动态变化的，所以不能用last_idx + chunk
             let end = ((ith + 1) * chunk).min(len);
             assert!(
                 self.last_idx <= end,
-                "addr:{:p} last_idx:{}, end:{}, len:{}, ith:{} chunk:{} hosts:{:?}",
+                "addr:{:p} last_idx:{}, end:{}, len:{}, ith:{} chunk:{}",
                 &self,
                 self.last_idx,
                 end,
                 len,
                 ith,
                 chunk,
-                self.hosts.hosts
             );
             let iter = self.hosts.hosts[self.last_idx..end].iter_mut();
             self.last_idx = end;
