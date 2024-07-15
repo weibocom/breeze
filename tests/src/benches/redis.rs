@@ -28,6 +28,18 @@ pub(super) fn parse(c: &mut Criterion) {
             });
         });
     });
+    let mut ctx = protocol::redis::ResponseContext { oft: 0, bulk: 0 };
+    group.bench_function("skip_multibulks", |b| {
+        b.iter(|| {
+            black_box({
+                while ctx.oft < stream.len() {
+                    stream.skip_multibulks(&mut ctx).expect("error not allowed");
+                }
+                assert_eq!(ctx.oft, stream.len());
+            });
+        });
+    });
+
     group.finish();
 }
 

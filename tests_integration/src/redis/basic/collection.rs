@@ -131,6 +131,65 @@ fn test_geo_ops() {
             .query(&mut con),
         Ok(("u8vk6wjr4e0".to_string(), "u9e5nqkuc90".to_string()))
     );
+
+    let _ = redis::cmd("DEl").arg("ABC").query::<()>(&mut con);
+    assert_eq!(
+        redis::cmd("GEOADD")
+            .arg("ABC")
+            .arg(30.00000089406967163)
+            .arg(49.99999957172130394)
+            .arg("Beijing")
+            .arg(26.99999839067459106)
+            .arg(53.99999994301438733)
+            .arg("Tianjin")
+            .arg(12)
+            .arg(15)
+            .arg("Hebei")
+            .query(&mut con),
+        Ok(3)
+    );
+
+    let r = redis::cmd("GEORADIUS")
+        .arg("ABC")
+        .arg(29)
+        .arg(49)
+        .arg(1000)
+        .arg("km")
+        .arg("WITHDIST")
+        .arg("WITHCOORD")
+        .query::<redis::Value>(&mut con);
+    assert!(r.is_ok());
+    assert_eq!(
+        r,
+        Ok(redis::Value::Bulk(vec![
+            redis::Value::Bulk(vec![
+                redis::Value::Data("Beijing".into()),
+                redis::Value::Data("132.6218".into()),
+                redis::Value::Bulk(vec![
+                    redis::Value::Data("30.00000089406967163".into()),
+                    redis::Value::Data("49.99999957172130394".into()),
+                ])
+            ]),
+            redis::Value::Bulk(vec![
+                redis::Value::Data("Tianjin".into()),
+                redis::Value::Data("573.0514".into()),
+                redis::Value::Bulk(vec![
+                    redis::Value::Data("26.99999839067459106".into()),
+                    redis::Value::Data("53.99999994301438733".into()),
+                ])
+            ]),
+        ]))
+    );
+
+    assert_eq!(
+        redis::cmd("ZREM")
+            .arg("ABC")
+            .arg("Beijing")
+            .arg("Tianjin")
+            .arg("Hebei")
+            .query(&mut con),
+        Ok(3)
+    );
     // operation not permitted on a read only server
     // assert_eq!(
     //     redis::cmd("GEORADIUS")
@@ -259,6 +318,19 @@ fn test_hash_ops() {
         hscan_match_found.insert(item);
     }
     assert!(hscan_match_found.contains(&("filed6".to_string(), 6)));
+    let big_key = "hash_key_long";
+    let _: Result<redis::Value, RedisError> = con.del(big_key);
+    for i in 0..2000 {
+        assert_eq!(
+            con.hset(big_key, format!("field_{}", i), format!("value_{}", i)),
+            Ok(1)
+        );
+    }
+    let r: Result<redis::Value, RedisError> = con.hgetall(big_key);
+    assert!(r.is_ok());
+    if let Ok(redis::Value::Bulk(ref items)) = r {
+        assert_eq!(items.len(), 4000);
+    }
 }
 
 /// string基本操作:
