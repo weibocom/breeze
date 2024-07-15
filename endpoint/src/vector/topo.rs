@@ -149,6 +149,8 @@ where
                 let year = si_item.date.year as u16 + 2000;
                 //构建sql
                 let limit = req.attach().left_count.min(si_item.count);
+                assert!(si_item.count > 0, "{}", si_item.count);
+                assert!(req.attach().left_count > 0, "{}", req.attach().left_count);
 
                 let Some(date) = NaiveDate::from_ymd_opt(year.into(), si_item.date.month.into(), 1)
                 else {
@@ -164,10 +166,9 @@ where
                 let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
 
                 //更新轮次信息
-                if round == si_items.len() as u16 || req.attach().left_count <= si_item.count {
+                if round == si_items.len() as u16 {
                     req.set_last(true);
                 }
-                req.attach_mut().left_count -= limit;
 
                 req.reshape(MemGuard::from_vec(cmd));
                 //获取shard

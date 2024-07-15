@@ -132,6 +132,7 @@ impl VecAttach {
     pub fn attach_body(&mut self, body_data: Vec<u8>, rows: u16, columns: u16) {
         self.body.push(body_data);
         self.body_token_count += rows * columns;
+        self.left_count = self.left_count.saturating_sub(rows);
     }
 
     #[inline]

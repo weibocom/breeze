@@ -130,14 +130,10 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     }
 
     #[inline]
-    fn update_attachment(
-        &self,
-        attachment: &mut Attachment,
-        response: &mut Command,
-    ) -> (bool, u32) {
+    fn update_attachment(&self, attachment: &mut Attachment, response: &mut Command) -> bool {
         // 默认情况下，attachment应该为空
         assert!(false, "{:?} {response}", attachment);
-        (false, 0)
+        false
     }
     #[inline]
     fn drop_attach(&self, _att: Attachment) {
