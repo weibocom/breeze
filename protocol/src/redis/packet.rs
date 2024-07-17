@@ -438,7 +438,8 @@ impl Packet {
     #[inline]
     pub fn skip_string_check(&self, oft: &mut usize) -> Result<()> {
         self.check_onetoken(*oft)?;
-        self.skip_string_inner(oft).map(|_| ())
+        self.skip_string_inner(oft)?;
+        Ok(())
     }
     ///oft 需要是有效的，返回string的oft
     #[inline]
@@ -653,10 +654,7 @@ impl Packet {
             self.check_onetoken(*oft)?;
             // 下面每种情况都确保了不会越界
             match self.at(*oft) {
-                b'*' => {
-                    *bulks += self.num_of_bulks(oft)? - 1;
-                    continue;
-                }
+                b'*' => *bulks = *bulks + self.num_of_bulks(oft)?,
                 // 能完整解析才跳过当前字符串：num个字节 + "\r\n" 2个字节
                 b'$' => self.skip_string_inner(oft).map(|_| {})?,
                 b'+' | b':' => self.line(oft)?,
