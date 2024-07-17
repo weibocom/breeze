@@ -1,10 +1,11 @@
 use core::fmt;
+use std::sync::atomic::Ordering::Relaxed;
 use std::{
     fmt::{Display, Formatter},
     ops::Deref,
 };
 
-use crate::Endpoint;
+use crate::{CloneableAtomicUsize, Endpoint};
 
 pub(crate) mod config;
 pub mod strategy;
@@ -76,8 +77,13 @@ impl Context {
 }
 
 pub trait WriteStrategy {
-    fn new(queue_len: usize, qsize_pos: &Vec<(usize, usize)>) -> Self;
-    fn get_write_idx(&self, msg_size: usize, last_idx: Option<usize>) -> usize;
+    fn new(que_len: usize, sized_que_infos: Vec<SizedQueueInfo>) -> Self;
+    fn get_write_idx(
+        &self,
+        msg_len: usize,
+        last_idx: Option<usize>,
+        tried_count: usize,
+    ) -> (usize, bool);
 }
 
 pub trait ReadStrategy {
@@ -113,5 +119,62 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}/{}", self.endpoint.addr(), self.qsize)
+    }
+}
+
+/**
+ * 某个指定size的queue列表的信息；
+ */
+#[derive(Debug, Clone, Default)]
+pub struct SizedQueueInfo {
+    // 当前queue的size大小
+    qsize: usize,
+    // 当前size的queue在总队列中的起始位置
+    start_pos: usize,
+    // 当前size的queue的长度
+    len: usize,
+    // 当前size的queue的访问序号
+    pub(crate) sequence: CloneableAtomicUsize,
+}
+
+impl SizedQueueInfo {
+    pub fn new(qsize: usize, start_pos: usize, len: usize) -> Self {
+        Self {
+            qsize,
+            start_pos,
+            len,
+            sequence: CloneableAtomicUsize::new(0),
+        }
+    }
+
+    #[inline]
+    pub fn qsize(&self) -> usize {
+        self.qsize
+    }
+
+    #[inline]
+    pub fn start_pos(&self) -> usize {
+        self.start_pos
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    // 根据当前的sequence，“轮询”获取本size内下一次应该请求的queue idx
+    #[inline]
+    pub fn next_idx(&self) -> usize {
+        let relative_idx = self.sequence.fetch_add(1, Relaxed) % self.len;
+        return self.start_pos + relative_idx;
+    }
+
+    // 根据上一次请求的idx，获取本size内下一次应该请求的queue idx
+    #[inline]
+    pub fn next_retry_idx(&self, last_idx: usize) -> usize {
+        assert!(last_idx >= self.start_pos, "{}:{:?}", last_idx, self);
+        let idx = last_idx + 1;
+        let relative_idx = (idx - self.start_pos) % self.len;
+        self.start_pos + relative_idx
     }
 }
