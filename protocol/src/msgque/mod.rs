@@ -20,6 +20,7 @@ const QUITBYTE: u32 = u32::from_le_bytes(*b"quit");
 const END: u32 = u32::from_le_bytes(*b"END\r");
 const VALUE: u32 = u32::from_le_bytes(*b"VALU");
 const STORED: u32 = u32::from_le_bytes(*b"STOR");
+const SERVER_ERROR: u32 = u32::from_le_bytes(*b"SERV");
 
 #[derive(Clone, Default)]
 pub struct MsgQue;
@@ -33,7 +34,7 @@ impl Protocol for MsgQue {
         process: &mut P,
     ) -> Result<()> {
         let data = stream.slice();
-        log::debug!("+++ will parse req:{}", data);
+        log::debug!("+++ will parse req:{:?}", data);
 
         let mut oft = 0;
         while let Some(mut lfcr) = data.find_lf_cr(oft) {
@@ -84,7 +85,7 @@ impl Protocol for MsgQue {
         }
         let head4 = data.u32_le(0);
         let ok = match head4 {
-            END => false,
+            END => true, // get miss 后，改为不重试，因为写已经改为了轮询写，每个节点概率相同，观察效果 2024.7.11 fishermen
             VALUE => {
                 // VALUE <key> <flags> <bytes> [<cas unique>]\r\n
                 let val_len = Self::val_len(data, 4, lfcr)?;
@@ -102,7 +103,14 @@ impl Protocol for MsgQue {
                 true
             }
             STORED => true,
-            _ => return Err(Error::UnexpectedData),
+            SERVER_ERROR => {
+                log::warn!("+++ server err mcq rsp: {:?} \r\n", data);
+                false
+            }
+            _ => {
+                log::warn!("+++ unknown err mcq rsp: {:?} \r\n", data);
+                return Err(Error::UnexpectedData);
+            }
         };
         return Ok(Some(Command::from(ok, stream.take(lfcr + 2))));
     }
