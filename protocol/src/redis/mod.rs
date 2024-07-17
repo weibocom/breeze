@@ -70,7 +70,7 @@ impl Redis {
     }
 
     #[inline]
-    fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
+    pub fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data: Packet = s.slice().into();
         let ctx: &mut ResponseContext = transmute(s.context());
         log::debug!("+++ will parse redis rsp:{:?}", data);
