@@ -24,7 +24,7 @@ backtrace = { version = "0.3.63", optional = true }
 lazy_static = "1.4.0"
 
 tokio.workspace = true
-tokio-util = {version = "0.7.8", features = ["io"]}
+tokio-util = {version = "0.7.11", features = ["io"]}
 
 once_cell = "*"
 rlimit = "0.8.3"
