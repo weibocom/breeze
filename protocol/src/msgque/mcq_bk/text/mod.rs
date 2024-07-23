@@ -97,7 +97,7 @@ impl Protocol for McqText {
     ) -> Result<()> {
         match self.parse_request_inner(stream, alg, process) {
             Ok(_) => Ok(()),
-            Err(Error::ProtocolIncomplete) => Ok(()),
+            Err(Error::ProtocolIncomplete(0)) => Ok(()),
             e => e,
         }
     }
@@ -106,7 +106,7 @@ impl Protocol for McqText {
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
         match self.parse_response_inner(data) {
             Ok(cmd) => Ok(cmd),
-            Err(Error::ProtocolIncomplete) => Ok(None),
+            Err(Error::ProtocolIncomplete(0)) => Ok(None),
             e => e,
         }
     }
