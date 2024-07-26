@@ -13,6 +13,7 @@ use super::{BinlogDumpFlags, Sid};
 /// Binlog request representation. Please consult MySql documentation.
 ///
 /// This struct is a helper builder for [`ComBinlogDump`] and [`ComBinlogDumpGtid`].
+#[allow(dead_code)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct BinlogRequest<'a> {
     /// Server id of a slave.
