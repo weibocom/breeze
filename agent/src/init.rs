@@ -7,8 +7,6 @@ pub(super) fn init(ctx: &Context) {
     init_log(&ctx);
     init_local_ip(&ctx);
     start_metrics_register_task(ctx);
-    #[cfg(feature = "console-api")]
-    crate::console::start_console(ctx);
 
     #[cfg(feature = "http")]
     crate::http::start(ctx);
