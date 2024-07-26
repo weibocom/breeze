@@ -164,6 +164,10 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> ds::BufWriter for Stream<S> {
         self.write_all(buf0)?;
         self.write_all(buf1)
     }
+    #[inline]
+    fn unread_len(&self) -> usize {
+        self.buf.unread_len()
+    }
 }
 impl<S> protocol::BufRead for Stream<S> {
     #[inline]
