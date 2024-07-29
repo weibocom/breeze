@@ -22,3 +22,6 @@ array-init = "2"
 ctor = "0.1.23"
 
 tokio.workspace = true
+
+[features]
+trace = []

@@ -32,5 +32,4 @@ mod proto_hook;
 mod ring_buffer;
 mod select;
 mod shard_checker;
-mod time;
 mod tx_buffer;

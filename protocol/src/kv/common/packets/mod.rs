@@ -2259,6 +2259,7 @@ define_const!(
     1
 );
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComStmtExecuteRequest<'a> {
     com_stmt_execute: ComStmtExecuteHeader,
@@ -2365,6 +2366,7 @@ define_header!(
     InvalidComStmtSendLongDataHeader
 );
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ComStmtSendLongData {
     __header: ComStmtSendLongDataHeader,

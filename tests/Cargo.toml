@@ -17,13 +17,13 @@ rand = "0.8.5"
 md5 = "*"
 byteorder = "1.4.3"
 assert-panic = "1.0.1"
-metrics = { path = "../metrics", features = ["mock-local-ip"]}
+metrics = { path = "../metrics", features = ["mock-local-ip"] }
 endpoint = { path = "../endpoint" }
 context = { path = "../context" }
 
 tokio.workspace = true
 ctor = "0.1.23"
-mysql_async ="0.31.3"
+mysql_async = "0.31.3"
 chrono = "0.4"
 lazy_static = "*"
 
@@ -54,3 +54,5 @@ layout-min = ["ds/tsc"]
 layout-max = ["rt/poll-io-metrics"]
 regex = ["protocol/regex"]
 github_workflow = []
+time = []
+nightly = []
