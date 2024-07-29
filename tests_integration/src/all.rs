@@ -1,4 +1,3 @@
-mod api;
 mod ci;
 mod counterservice;
 // mod hasher;
