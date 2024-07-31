@@ -78,6 +78,13 @@ impl ResizedRingBuffer {
         if len == 0 {
             self.dropping.clear();
         }
+        if self.cap() >= 2097152 {
+            log::info!(
+                "need_shrink: {}, shrink {:?}",
+                self.policy.need_shrink(len, self.cap()),
+                self
+            );
+        }
         if self.policy.need_shrink(len, self.cap()) {
             let new = self.policy.shrink(len, self.cap());
             self.resize(new);
