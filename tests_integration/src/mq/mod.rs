@@ -148,7 +148,8 @@ fn msgque_strategy_check() {
         }
     }
 
-    // let hits_percent = (hits as f64) / (read_count as f64);
+    let hits_percent = (hits as f64) / (read_count as f64);
+    print!("hits percent:{}", hits_percent);
     // assert!(
     //     hits_percent >= 0.8,
     //     "strategy check read strategy:{}/{}",
