@@ -129,6 +129,11 @@ impl Protocol for Redis {
             Err(Error::ProtocolIncomplete) => {
                 //assert!(oft + 3 >= data.len(), "oft:{} => {:?}", oft, data.slice());
                 if oft > data.len() {
+                    log::warn!(
+                        "ProtocolIncomplete {}, data {:?}",
+                        oft - data.len(),
+                        data.slice()
+                    );
                     data.reserve(oft - data.len());
                 }
 
