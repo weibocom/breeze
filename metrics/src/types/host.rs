@@ -98,6 +98,18 @@ impl Host {
         }
         self.qps(w, secs, &b.num_alloc, &(key.to_string() + "_num"));
         self.qps(w, secs, &b.bytes_alloc, &(key.to_string() + "_bytes"));
+        w.write(
+            crate::BASE_PATH,
+            &(key.to_string() + "_num_total"),
+            "num",
+            b.total_num_alloc.get(),
+        );
+        w.write(
+            crate::BASE_PATH,
+            &(key.to_string() + "_bytes_total"),
+            "num",
+            b.total_bytes_alloc.get(),
+        );
     }
     #[inline]
     fn qps<W: crate::ItemWriter>(&mut self, w: &mut W, secs: f64, m: &AtomicI64, key: &str) {
