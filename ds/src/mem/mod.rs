@@ -28,10 +28,12 @@ pub static CACHE_ALLOC_NUM: AtomicI64 = AtomicI64::new(0);
 pub static CACHE_MISS_ALLOC_NUM: AtomicI64 = AtomicI64::new(0);
 
 pub struct Buffers {
-    pub num: AtomicI64,         // 字节数
-    pub cnt: AtomicI64,         // buffer的数量
-    pub num_alloc: AtomicI64,   // 分配的数量. 用于计算num per sec
-    pub bytes_alloc: AtomicI64, // 分配的字节数. 用于计算 bytes / secs
+    pub num: AtomicI64,               // 字节数
+    pub cnt: AtomicI64,               // buffer的数量
+    pub total_num_alloc: AtomicI64,   // 累计分配的数量.
+    pub total_bytes_alloc: AtomicI64, // 累计分配的字节数.
+    pub num_alloc: AtomicI64,         // 分配的数量. 用于计算num per sec
+    pub bytes_alloc: AtomicI64,       // 分配的字节数. 用于计算 bytes / secs
     pub layouts: [AtomicI64; 16],
 }
 impl Buffers {
@@ -61,10 +63,14 @@ impl Buffers {
             cnt: AtomicI64::new(0),
             num_alloc: AtomicI64::new(0),
             bytes_alloc: AtomicI64::new(0),
+            total_num_alloc: AtomicI64::new(0),
+            total_bytes_alloc: AtomicI64::new(0),
         }
     }
     #[inline]
     pub fn incr_by(&self, v: usize) {
+        self.total_bytes_alloc.fetch_add(v as i64, Relaxed);
+        self.total_num_alloc.fetch_add(1, Relaxed);
         self.bytes_alloc.fetch_add(v as i64, Relaxed);
         self.num_alloc.fetch_add(1, Relaxed);
         self.num.fetch_add(v as i64, Relaxed);
