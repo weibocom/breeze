@@ -18,7 +18,7 @@ pub struct ContextOption {
     #[clap(long, help("port for suvervisor"), default_value("9984"))]
     pub port: u16,
 
-    #[clap(short, long, help("number of threads"), default_value("4"))]
+    #[clap(short, long, help("number of threads"), default_value("16"))]
     pub thread_num: u8,
 
     #[clap(long, help("number of open file"), default_value("204800"))]
