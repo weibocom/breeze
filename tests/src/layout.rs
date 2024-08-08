@@ -49,6 +49,10 @@ fn checkout_basic() {
     assert_eq!(40, size_of::<CheckedTopology>());
     assert_eq!(192, size_of::<stream::StreamMetrics>());
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
+    assert_eq!(
+        size_of::<protocol::Attachment>(),
+        size_of::<protocol::vector::attachment::VecAttach>()
+    );
 }
 
 // 如果要验证 layout-min模式，需要 --features layout-min --release --no-default-features
@@ -60,7 +64,7 @@ fn check_layout_rx_buffer() {
 #[ignore]
 #[test]
 fn check_callback_ctx() {
-    assert_eq!(192, size_of::<CallbackContext>());
+    assert_eq!(520, size_of::<CallbackContext>());
     //assert_eq!(16, size_of::<protocol::callback::Context>());
 }
 //#[ignore]
