@@ -1,118 +1,25 @@
-use std::cell::UnsafeCell;
-
-use ds::BufWriter;
+use crate::proto_hook;
 use protocol::{
     msgque::{McqText, OP_GET, OP_QUIT, OP_SET, OP_STATS, OP_VERSION},
     AsyncBufRead, Attachment, BufRead, Commander, Error, HashedCommand, Metric, Proto,
     RequestProcessor, Stream, Writer,
 };
-use sharding::hash::{Hash, HashKey};
 
-#[derive(Debug)]
-struct VecStream {
-    oft: usize,
-    inner: Vec<u8>,
-}
-
-impl AsyncBufRead for VecStream {
-    fn poll_recv(
-        &mut self,
-        _cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<protocol::Result<()>> {
-        todo!()
-    }
-}
-
-impl BufRead for VecStream {
-    fn len(&self) -> usize {
-        self.inner.len() - self.oft
-    }
-
-    fn slice(&self) -> ds::RingSlice {
-        ds::RingSlice::from_vec(&self.inner)
-    }
-
-    fn take(&mut self, n: usize) -> ds::MemGuard {
-        let fristn = &self.inner[self.oft..self.oft + n];
-        self.oft += n;
-        ds::MemGuard::from_vec(fristn.to_vec())
-    }
-
-    fn context(&mut self) -> &mut protocol::StreamContext {
-        todo!()
-    }
-
-    fn reserve(&mut self, r: usize) {
-        self.inner.reserve(r)
-    }
-}
-
-impl BufWriter for VecStream {
-    fn write_all(&mut self, _buf: &[u8]) -> std::io::Result<()> {
-        self.inner.extend_from_slice(_buf);
-        Ok(())
-    }
-}
-
-impl Writer for VecStream {
-    fn cap(&self) -> usize {
-        todo!()
-    }
-
-    fn pending(&self) -> usize {
-        todo!()
-    }
-
-    fn write(&mut self, data: &[u8]) -> protocol::Result<()> {
-        self.inner.extend_from_slice(data);
-        Ok(())
-    }
-
-    fn cache(&mut self, _hint: bool) {
-        todo!()
-    }
-
-    fn shrink(&mut self) {
-        todo!()
-    }
-
-    fn try_gc(&mut self) -> bool {
-        todo!()
-    }
-}
-
-impl Stream for VecStream {}
-
-struct Process {
-    reqs: Vec<HashedCommand>,
-}
-
-impl RequestProcessor for Process {
-    fn process(&mut self, req: HashedCommand, last: bool) {
-        self.reqs.push(req);
-        assert!(last)
-    }
-}
-
-struct Alg {}
-impl Hash for Alg {
-    fn hash<S: HashKey>(&self, _key: &S) -> i64 {
-        0
-    }
-}
+use protocol::BufRead;
 
 /// 请求以任意长度发送
 #[test]
 fn test_req_reenter() {
     let getset = b"get key1\r\nget key2\r\nset key3 0 9999 10\r\n1234567890\r\nset key4 0 9999 10\r\n1234567890\r\nget key1\r\nget key2\r\n";
 
-    let proto = McqText;
-    let alg = &Alg {};
+    let proto = MsgQue;
+    let alg = &proto_hook::Alg {};
     for i in 0..getset.len() {
-        let mut process = Process { reqs: Vec::new() };
+        let mut process = proto_hook::Process { reqs: Vec::new() };
         let (req1, _) = getset.split_at(i);
-        let mut stream = VecStream {
+        let mut stream = proto_hook::TestStream {
             oft: 0,
+            ctx: Default::default(),
             inner: req1.to_vec(),
         };
         let _ = proto.parse_request(&mut stream, alg, &mut process);
@@ -176,13 +83,14 @@ fn test_req_reenter() {
 
 #[test]
 fn test_meta() {
-    let proto = McqText;
-    let alg = &Alg {};
+    let proto = MsgQue;
+    let alg = &proto_hook::Alg {};
 
-    let mut process = Process { reqs: Vec::new() };
+    let mut process = proto_hook::Process { reqs: Vec::new() };
     let req_str = b"version\r\n";
-    let mut stream = VecStream {
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: req_str.to_vec(),
     };
     let _ = proto.parse_request(&mut stream, alg, &mut process);
@@ -193,10 +101,11 @@ fn test_meta() {
     assert!(req.equal(req_str));
     assert_eq!(stream.len(), 0);
 
-    let mut process = Process { reqs: Vec::new() };
+    let mut process = proto_hook::Process { reqs: Vec::new() };
     let req_str = b"quit\r\n";
-    let mut stream = VecStream {
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: req_str.to_vec(),
     };
     let _ = proto.parse_request(&mut stream, alg, &mut process);
@@ -207,10 +116,11 @@ fn test_meta() {
     assert!(req.equal(req_str));
     assert_eq!(stream.len(), 0);
 
-    let mut process = Process { reqs: Vec::new() };
+    let mut process = proto_hook::Process { reqs: Vec::new() };
     let req_str = b"stats\r\n";
-    let mut stream = VecStream {
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: req_str.to_vec(),
     };
     let _ = proto.parse_request(&mut stream, alg, &mut process);
@@ -224,13 +134,14 @@ fn test_meta() {
 
 #[test]
 fn test_rsp() {
-    let proto = McqText;
+    let proto = MsgQue;
 
     let rspstr = b"END\r\n";
     for i in 0..rspstr.len() {
         let (rspstr1, _) = rspstr.split_at(i);
-        let mut stream = VecStream {
+        let mut stream = proto_hook::TestStream {
             oft: 0,
+            ctx: Default::default(),
             inner: rspstr1.to_vec(),
         };
         let Ok(rsp) = proto.parse_response(&mut stream) else {
@@ -251,8 +162,9 @@ fn test_rsp() {
     let rspstr = b"VALUE key1 0 10\r\n1234567890\r\nEND\r\n";
     for i in 0..rspstr.len() {
         let (rspstr1, _) = rspstr.split_at(i);
-        let mut stream = VecStream {
+        let mut stream = proto_hook::TestStream {
             oft: 0,
+            ctx: Default::default(),
             inner: rspstr1.to_vec(),
         };
         let Ok(rsp) = proto.parse_response(&mut stream) else {
@@ -273,8 +185,9 @@ fn test_rsp() {
     let rspstr = b"STORED\r\n";
     for i in 0..rspstr.len() {
         let (rspstr1, _) = rspstr.split_at(i);
-        let mut stream = VecStream {
+        let mut stream = proto_hook::TestStream {
             oft: 0,
+            ctx: Default::default(),
             inner: rspstr1.to_vec(),
         };
         let Ok(rsp) = proto.parse_response(&mut stream) else {
@@ -295,8 +208,9 @@ fn test_rsp() {
     let rspstr = b"NOT_STORED\r\n";
     for i in 0..rspstr.len() {
         let (rspstr1, _) = rspstr.split_at(i);
-        let mut stream = VecStream {
+        let mut stream = proto_hook::TestStream {
             oft: 0,
+            ctx: Default::default(),
             inner: rspstr1.to_vec(),
         };
         let Ok(rsp) = proto.parse_response(&mut stream) else {
@@ -376,57 +290,63 @@ impl Commander<TestMetric, TestMetricItem> for TestCtx {
 
 #[test]
 fn test_write_response() {
-    let proto = McqText;
-    let alg = &Alg {};
+    let proto = MsgQue;
+    let alg = &proto_hook::Alg {};
 
-    let mut process = Process { reqs: Vec::new() };
+    let mut process = proto_hook::Process { reqs: Vec::new() };
     let req_str = b"version\r\n";
-    let mut stream = VecStream {
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: req_str.to_vec(),
     };
     let _ = proto.parse_request(&mut stream, alg, &mut process);
     assert_eq!(process.reqs.len(), 1);
     let req = process.reqs.into_iter().next().unwrap();
-    let mut ctx = TestCtx::new(req);
-    let mut stream = VecStream {
+    let mut ctx = proto_hook::TestCtx::new(req);
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: Vec::new(),
     };
     let _ = proto.write_response(&mut ctx, None, &mut stream);
     let resp_str = b"VERSION 0.0.1\r\n";
     assert_eq!(stream.inner, resp_str.to_vec());
 
-    let mut process = Process { reqs: Vec::new() };
+    let mut process = proto_hook::Process { reqs: Vec::new() };
     let req_str = b"stats\r\n";
-    let mut stream = VecStream {
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: req_str.to_vec(),
     };
     let _ = proto.parse_request(&mut stream, alg, &mut process);
     assert_eq!(process.reqs.len(), 1);
     let req = process.reqs.into_iter().next().unwrap();
-    let mut ctx = TestCtx::new(req);
-    let mut stream = VecStream {
+    let mut ctx = proto_hook::TestCtx::new(req);
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: Vec::new(),
     };
     let _ = proto.write_response(&mut ctx, None, &mut stream);
     let resp_str = b"STAT supported later\r\nEND\r\n";
     assert_eq!(stream.inner, resp_str.to_vec());
 
-    let mut process = Process { reqs: Vec::new() };
+    let mut process = proto_hook::Process { reqs: Vec::new() };
     let req_str = b"quit\r\n";
-    let mut stream = VecStream {
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: req_str.to_vec(),
     };
     let _ = proto.parse_request(&mut stream, alg, &mut process);
     assert_eq!(process.reqs.len(), 1);
     let req = process.reqs.into_iter().next().unwrap();
-    let mut ctx = TestCtx::new(req);
-    let mut stream = VecStream {
+    let mut ctx = proto_hook::TestCtx::new(req);
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: Vec::new(),
     };
     let e = proto.write_response(&mut ctx, None, &mut stream);
@@ -434,70 +354,78 @@ fn test_write_response() {
         panic!("expected quit error")
     };
 
-    let mut process = Process { reqs: Vec::new() };
+    let mut process = proto_hook::Process { reqs: Vec::new() };
     let req_str = b"get key1\r\n";
-    let mut stream = VecStream {
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: req_str.to_vec(),
     };
     let _ = proto.parse_request(&mut stream, alg, &mut process);
     assert_eq!(process.reqs.len(), 1);
     let req = process.reqs.into_iter().next().unwrap();
-    let mut ctx = TestCtx::new(req);
+    let mut ctx = proto_hook::TestCtx::new(req);
     let rspstr = b"VALUE key1 0 10\r\n1234567890\r\nEND\r\n";
-    let mut rsp_stream = VecStream {
+    let mut rsp_stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: rspstr.to_vec(),
     };
     let Ok(mut rsp) = proto.parse_response(&mut rsp_stream) else {
         panic!("parse_response failed");
     };
-    let mut stream = VecStream {
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: Vec::new(),
     };
     let _ = proto.write_response(&mut ctx, rsp.as_mut(), &mut stream);
     assert_eq!(stream.inner, rspstr.to_vec());
 
     //没有查到
-    let mut process = Process { reqs: Vec::new() };
+    let mut process = proto_hook::Process { reqs: Vec::new() };
     let req_str = b"get key1\r\n";
-    let mut stream = VecStream {
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: req_str.to_vec(),
     };
     let _ = proto.parse_request(&mut stream, alg, &mut process);
     assert_eq!(process.reqs.len(), 1);
     let req = process.reqs.into_iter().next().unwrap();
-    let mut ctx = TestCtx::new(req);
+    let mut ctx = proto_hook::TestCtx::new(req);
     let rspstr = b"END\r\n";
-    let mut rsp_stream = VecStream {
+    let mut rsp_stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: rspstr.to_vec(),
     };
     let Ok(mut rsp) = proto.parse_response(&mut rsp_stream) else {
         panic!("parse_response failed");
     };
-    let mut stream = VecStream {
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: Vec::new(),
     };
     let _ = proto.write_response(&mut ctx, rsp.as_mut(), &mut stream);
     assert_eq!(stream.inner, rspstr.to_vec());
 
     //没有响应
-    let mut process = Process { reqs: Vec::new() };
+    let mut process = proto_hook::Process { reqs: Vec::new() };
     let req_str = b"get key1\r\n";
-    let mut stream = VecStream {
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: req_str.to_vec(),
     };
     let _ = proto.parse_request(&mut stream, alg, &mut process);
     assert_eq!(process.reqs.len(), 1);
     let req = process.reqs.into_iter().next().unwrap();
-    let mut ctx = TestCtx::new(req);
-    let mut stream = VecStream {
+    let mut ctx = proto_hook::TestCtx::new(req);
+    let mut stream = proto_hook::TestStream {
         oft: 0,
+        ctx: Default::default(),
         inner: Vec::new(),
     };
     let _ = proto.write_response(&mut ctx, None, &mut stream);

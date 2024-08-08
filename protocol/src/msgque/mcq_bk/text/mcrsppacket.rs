@@ -53,7 +53,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
         let mut state = self.state;
 
         if self.data.len() < 2 {
-            return Err(super::Error::ProtocolIncomplete);
+            return Err(super::Error::ProtocolIncomplete(0));
         }
 
         if self.current().is_ascii_digit() {
@@ -252,7 +252,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                     m = self.oft + self.vlen;
                     // TODO 提升解析性能 speedup fishermen
                     if m >= self.data.len() {
-                        return Err(super::Error::ProtocolIncomplete);
+                        return Err(super::Error::ProtocolIncomplete(0));
                     }
                     match self.data.at(m) {
                         CR => {
@@ -317,7 +317,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
 
             self.skip(1)?;
         }
-        Err(super::Error::ProtocolIncomplete)
+        Err(super::Error::ProtocolIncomplete(0))
     }
 
     #[inline]
@@ -340,7 +340,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
         if self.oft <= self.data.len() {
             return Ok(());
         }
-        return Err(super::Error::ProtocolIncomplete);
+        return Err(super::Error::ProtocolIncomplete(0));
     }
 
     #[inline]

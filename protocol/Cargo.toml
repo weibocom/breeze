@@ -48,6 +48,21 @@ paste = "1.0"
 [features]
 max_allowed_packet = []
 regex = ["dep:regex"]
+buffer-pool = []
+bigdecimal = []
+bigdecimal03 = []
+chrono = []
+rust_decimal = []
+time = []
+time03 = []
+uuid = []
+rustc_serialize = []
+native-tls = []
+rustls = []
+frunk = []
+nightly = []
+rustls-tls = []
+
 
 [dev-dependencies]
 proptest = "1.0"
