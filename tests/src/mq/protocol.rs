@@ -1,11 +1,10 @@
+use std::cell::UnsafeCell;
+
 use crate::proto_hook;
 use protocol::{
-    msgque::{McqText, OP_GET, OP_QUIT, OP_SET, OP_STATS, OP_VERSION},
-    AsyncBufRead, Attachment, BufRead, Commander, Error, HashedCommand, Metric, Proto,
-    RequestProcessor, Stream, Writer,
+    msgque::{MsgQue, OP_GET, OP_QUIT, OP_SET, OP_STATS, OP_VERSION},
+    Attachment, BufRead, Commander, Error, HashedCommand, Metric, Proto,
 };
-
-use protocol::BufRead;
 
 /// 请求以任意长度发送
 #[test]
@@ -229,12 +228,14 @@ fn test_rsp() {
     }
 }
 
+#[allow(dead_code)]
 struct TestCtx {
     req: HashedCommand,
     metric: TestMetric,
 }
 
 impl TestCtx {
+    #[allow(dead_code)]
     fn new(req: HashedCommand) -> Self {
         Self {
             req,
