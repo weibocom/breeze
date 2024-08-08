@@ -7,7 +7,7 @@ pub use crate::kv::common::proto::Text;
 use super::packet::{MysqlRawPacket, RedisPack};
 use crate::kv::common::{io::ParseBuf, packets::OkPacket, row::RowDeserializer};
 
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 
 use crate::kv::common::packets::{Column, OldEofPacket, ResultSetTerminator};
 use crate::kv::common::query_result::{Or, SetIteratorState};
@@ -161,7 +161,7 @@ impl<T: crate::kv::prelude::Protocol> QueryResult<T> {
                     return Ok(None);
                 }
             },
-            InEmptySet(_) => {
+            InEmptySet(_a) => {
                 self.handle_next();
                 Ok(None)
             }
@@ -179,11 +179,6 @@ impl<T: crate::kv::prelude::Protocol> QueryResult<T> {
             }
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SetColumns<'a> {
-    inner: Option<&'a Arc<[Column]>>,
 }
 
 #[inline]

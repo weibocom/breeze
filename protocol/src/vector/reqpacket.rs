@@ -143,7 +143,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             // 路过CRLF_LEN个字节，通过命令获取op_code
             let (op_code, idx) = CommandHasher::hash_slice(&*self.data, first_r + CRLF_LEN)?;
             if idx + CRLF_LEN > self.data.len() {
-                return Err(crate::Error::ProtocolIncomplete);
+                return Err(crate::Error::ProtocolIncomplete(0));
             }
             self.op_code = op_code;
             // 第一次解析cmd需要对协议进行合法性校验
@@ -158,7 +158,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             self.bulks -= 1;
             Ok(cfg)
         } else {
-            return Err(crate::Error::ProtocolIncomplete);
+            return Err(crate::Error::ProtocolIncomplete(0));
         }
     }
 
@@ -188,8 +188,12 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             log::warn!("not enough bulks to skip req:{}", self);
             return Err(KvectorError::ReqInvalidBulkNum.into());
         }
-        self.bulks -= count;
-        self.data.skip_bulk(&mut self.oft, count as usize)
+        let mut tmp_count = count as usize;
+        self.data
+            .full_skip_multibulks(&mut self.oft, &mut tmp_count)?;
+        assert_eq!(tmp_count, 0);
+        self.bulks -= count as u16;
+        Ok(())
     }
 
     /// 注意返回的是整个key，包括main-key和扩展key

@@ -101,6 +101,7 @@ where
 }
 
 /// Representation of a serialized bytes.
+#[allow(dead_code)]
 pub trait SeqRepr {
     /// Maximum number of items in a sequence (depends on how lenght is stored).
     const MAX_LEN: usize;

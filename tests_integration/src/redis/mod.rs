@@ -201,7 +201,7 @@ fn test_mset_reenter() {
         assert_eq!(con.recv_response().unwrap(), redis::Value::Okay);
         let key = ("test_mset_reenter1", "test_mset_reenter2");
         assert_eq!(
-            con.mget::<(&str, &str), (usize, usize)>(key).unwrap(),
+            con.get::<(&str, &str), (usize, usize)>(key).unwrap(),
             (mid, mid)
         );
     }
