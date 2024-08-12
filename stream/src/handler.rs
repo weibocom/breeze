@@ -127,7 +127,7 @@ where
             // 在这是安全的，因为在L110已经读取所有数据，并且这当中不会中断
             unsafe { self.req_buf.set_len(0) };
         }
-        assert_eq!(self.req_buf.len(), 0);
+        debug_assert_eq!(self.req_buf.len(), 0);
         Poll::Ready(Err(Error::ChanReadClosed))
     }
     #[inline]
@@ -197,15 +197,16 @@ where
     }
     #[inline(always)]
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        let out = Pin::new(&mut self.s).poll_flush(cx)?;
-        //仅仅有异步请求未flush成功，则检查是否存在大量异步请求内存占用，如果占用超过200M，则关闭连接。
-        if out.is_pending() {
-            if self.pending.len() == 0 && self.s.unread_len() > 200 * 1024 * 1024 {
-                return Poll::Ready(Err(Error::TxBufFull));
+        match Pin::new(&mut self.s).poll_flush(cx) {
+            Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e.into())),
+            //仅仅有异步请求未flush成功，则检查是否存在大量异步请求内存占用，如果占用大于等于512M，则关闭连接。
+            Poll::Pending => {
+                if self.pending.len() == 0 && self.s.unread_len() >= 512 * 1024 * 1024 {
+                    return Poll::Ready(Err(Error::TxBufFull));
+                }
+                Poll::Pending
             }
-            Poll::Pending
-        } else {
-            Poll::Ready(Ok(()))
         }
     }
 }
