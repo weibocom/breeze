@@ -70,16 +70,18 @@ impl MemPolicy {
         self.trace.trace_reset();
     }
     // 确认缩容的size
-    // 1. 最小值为 len + reserve的1.25倍
-    // 2. 不小于原来的cap
+    // 1. 不小于原来的cap
+    // 2. 扩容小于原容量两倍时，才多预留四分之一
     // 3. 至少为BUF_MIN
     // 4. 2的指数倍
     #[inline]
     pub fn grow(&mut self, len: usize, cap: usize, reserve: usize) -> usize {
-        let new = ((5 * (len + reserve)) / 4)
-            .max(cap)
-            .max(BUF_MIN)
-            .next_power_of_two();
+        let mut new_len = len + reserve;
+        assert!(new_len > cap);
+        if new_len <= cap * 2 {
+            new_len = (5 * new_len) / 4
+        };
+        let new = new_len.max(BUF_MIN).next_power_of_two();
         if cap > BUF_MIN {
             log::info!("grow: {}+{}>{} => {} {}", len, reserve, cap, new, self);
         }
