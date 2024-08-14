@@ -6,7 +6,7 @@ use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::{ContextStatus, MysqlBuilder};
-use protocol::vector::attachment::{VAttach, VecAttach};
+use protocol::vector::attachment::{VAttach, VectorAttach};
 use protocol::vector::redis::parse_vector_detail;
 use protocol::vector::CommandType;
 use protocol::Protocol;
@@ -146,15 +146,16 @@ where
         Ok(shard)
     }
     fn more_get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
+        let operation = req.operation();
         req.attachment_mut()
-            .get_or_insert(VecAttach::default().to_attach());
+            .get_or_insert(VectorAttach::new(operation).to_attach());
         //分别代表请求的轮次和每轮重试次数
         let (round, runs) = (req.attach().round, req.ctx_mut().runs);
         //runs == 0 表示第一轮第一次请求
         let shard = if runs == 0 || req.attach().rsp_ok {
             let shard = if runs == 0 {
                 //请求si表
-                assert_eq!(req.attach().left_count, 0);
+                assert_eq!(req.attach().retrieve_attach().left_count, 0);
                 assert_eq!(*req.context_mut(), 0);
                 let vcmd = parse_vector_detail(****req, req.flag())?;
                 //上行请求不需要初始化leftcount
@@ -162,7 +163,9 @@ where
                     let limit = vcmd.limit();
                     assert!(limit > 0, "{limit}");
                     //需要在buildsql之前设置
-                    req.attach_mut().init(limit as u16);
+                    req.attach_mut()
+                        .retrieve_attach_mut()
+                        .with_left_count(limit as u16);
                 }
 
                 let si_sql = SiSqlBuilder::new(&vcmd, req.hash(), &self.strategist)?;
