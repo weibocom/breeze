@@ -16,11 +16,12 @@ use crate::{
     Attachment, Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol,
     RequestProcessor, Result, Stream, Writer,
 };
+use attachment::AttachType;
 use chrono::NaiveDate;
 use ds::RingSlice;
 use sharding::hash::Hash;
 
-use self::attachment::VecAttach;
+use self::attachment::VectorAttach;
 use self::packet::RedisPack;
 use self::reqpacket::RequestPacket;
 use self::rsppacket::ResponsePacket;
@@ -123,17 +124,30 @@ impl Protocol for Vector {
                 w.write("\r\n".as_bytes())?;
             } else {
                 if ctx.attachment().is_some() {
-                    // 有attachment: 组装rsp: header(vec[0]) + *body_tokens + vec[1..]
-                    let attach = VecAttach::attach(ctx.attachment().unwrap());
-                    if attach.body_token_count() > 0 {
-                        w.write(attach.header())?;
-                        w.write(format!("*{}\r\n", attach.body_token_count()).as_bytes())?;
-                        for b in attach.body() {
-                            w.write(b.as_slice())?;
+                    let vec_attach =
+                        VectorAttach::attach(ctx.attachment().expect("vector attache"));
+                    match vec_attach.attch_type() {
+                        AttachType::Retrieve => {
+                            // 有attachment: 组装rsp: header(vec[0]) + *body_tokens + vec[1..]
+                            let attach = vec_attach.retrieve_attach();
+                            if attach.body_token_count() > 0 {
+                                w.write(attach.header())?;
+                                w.write(format!("*{}\r\n", attach.body_token_count()).as_bytes())?;
+                                for b in attach.body() {
+                                    w.write(b.as_slice())?;
+                                }
+                            } else {
+                                // 返回空
+                                w.write("$-1\r\n".as_bytes())?;
+                            }
                         }
-                    } else {
-                        // 返回空
-                        w.write("$-1\r\n".as_bytes())?;
+                        AttachType::Store => {
+                            let attach = vec_attach.store_attach();
+                            w.write(format!(":{}\r\n", attach.affected_rows).as_bytes())?;
+                        }
+                        _ => {
+                            panic!("bad attach type");
+                        }
                     }
                 } else {
                     // 无attachment: response已封装为redis协议。正常响应有三种：
@@ -181,34 +195,50 @@ impl Protocol for Vector {
     #[inline]
     fn update_attachment(&self, attachment: &mut Attachment, response: &mut Command) -> bool {
         assert!(response.ok());
-        let attach = VecAttach::attach_mut(attachment);
+        let vec_attach = VectorAttach::attach_mut(attachment);
         //收到响应就算ok，响应有问题也不会发送到topo了
-        attach.rsp_ok = true;
+        vec_attach.rsp_ok = true;
 
-        if attach.is_empty() {
-            // TODO 先打通，此处的内存操作需要考虑优化 fishermen
-            let mut header_data = Vec::new();
-            let header = &mut response.header;
-            mem::swap(&mut header_data, &mut header.header);
-            attach.attach_header(header_data);
-        }
-
-        // TODO 先打通，此处的内存操作需要考虑优化 fishermen
-        match attach.has_si() {
-            true => {
-                if response.header.rows > 0 {
-                    let header = &response.header;
-                    attach.attach_body(response.data().0.to_vec(), header.rows, header.columns);
+        match vec_attach.attch_type() {
+            AttachType::Retrieve => {
+                let attach = vec_attach.retrieve_attach_mut();
+                if attach.is_empty() {
+                    // TODO 先打通，此处的内存操作需要考虑优化 fishermen
+                    let mut header_data = Vec::new();
+                    let header = &mut response.header;
+                    mem::swap(&mut header_data, &mut header.header);
+                    attach.attach_header(header_data);
                 }
-                attach.left_count == 0
+
+                // TODO 先打通，此处的内存操作需要考虑优化 fishermen
+                match attach.has_si() {
+                    true => {
+                        if response.header.rows > 0 {
+                            let header = &response.header;
+                            attach.attach_body(
+                                response.data().0.to_vec(),
+                                header.rows,
+                                header.columns,
+                            );
+                        }
+                        attach.left_count == 0
+                    }
+                    // 按si解析响应: 未成功获取有效si信息或者解析si失败，并终止后续请求
+                    false => response.count() == 0 || !attach.attach_si(response),
+                }
             }
-            // 按si解析响应: 未成功获取有效si信息或者解析si失败，并终止后续请求
-            false => response.count() == 0 || !attach.attach_si(response),
+            AttachType::Store => {
+                // TODO 先提交，稍后进行effected rows 更新 fishermen
+                true
+            }
+            _ => {
+                panic!("malformed attach");
+            }
         }
     }
     #[inline]
     fn drop_attach(&self, att: Attachment) {
-        let _ = VecAttach::from(att);
+        let _ = VectorAttach::from(att);
     }
 }
 
