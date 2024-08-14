@@ -415,6 +415,7 @@ impl FieldVal {
 
 pub trait Strategy {
     fn keys(&self) -> &[String];
+    fn keys_len(&self, cmd: CommandType) -> usize;
     //todo 通过代理类型实现
     fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_>;
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64);

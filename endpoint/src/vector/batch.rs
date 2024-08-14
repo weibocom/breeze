@@ -3,7 +3,7 @@ use chrono::{Datelike, NaiveDate};
 use chrono_tz::Tz;
 use core::fmt::Write;
 use ds::RingSlice;
-use protocol::Error;
+use protocol::{vector::CommandType, Error};
 use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]
@@ -123,6 +123,15 @@ impl Batch {
 
     pub(crate) fn si_cols(&self) -> &[String] {
         &self.si_cols
+    }
+
+    pub(crate) fn keys_len(&self, cmd: CommandType) -> usize {
+        match cmd {
+            CommandType::VRange => self.keys().len() - 1,
+            //相比vrange多了一个日期key
+            CommandType::VAdd | CommandType::VDel => self.keys().len(),
+            _ => panic!("not sup {cmd:?}"),
+        }
     }
 }
 
