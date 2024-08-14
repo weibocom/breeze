@@ -227,7 +227,7 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
         strategy: &'a S,
         limit: u64,
     ) -> Result<Self> {
-        if vcmd.keys.len() != strategy.keys().len() {
+        if vcmd.keys.len() != strategy.keys_len(vcmd.cmd) {
             Err(Error::RequestProtocolInvalid)
         } else {
             Ok(Self {
@@ -352,7 +352,7 @@ pub struct SiSqlBuilder<'a, S> {
 
 impl<'a, S: Strategy> SiSqlBuilder<'a, S> {
     pub fn new(vcmd: &'a VectorCmd, hash: i64, strategy: &'a S) -> Result<Self> {
-        if vcmd.keys.len() != strategy.keys().len() {
+        if vcmd.keys.len() != strategy.keys_len(vcmd.cmd) {
             Err(Error::RequestProtocolInvalid)
         } else {
             Ok(Self {

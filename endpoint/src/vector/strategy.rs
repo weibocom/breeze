@@ -3,6 +3,7 @@ use std::fmt::Write;
 pub use crate::kv::strategy::Postfix;
 use chrono::NaiveDate;
 use ds::RingSlice;
+use protocol::vector::CommandType;
 use protocol::Result;
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
@@ -123,6 +124,13 @@ impl protocol::vector::Strategy for Strategist {
             Strategist::Batch(inner) => inner.keys(),
         }
     }
+    fn keys_len(&self, cmd: CommandType) -> usize {
+        match self {
+            Strategist::VectorTime(inner) => inner.keys().len(),
+            Strategist::Batch(inner) => inner.keys_len(cmd),
+        }
+    }
+
     fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
         match self {
             Strategist::VectorTime(inner) => inner.condition_keys(),
