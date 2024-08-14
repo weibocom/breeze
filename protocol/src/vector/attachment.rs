@@ -348,6 +348,13 @@ impl RetrieveAttach {
     }
 }
 
+impl StoreAttach {
+    #[inline]
+    pub fn incr_affected_rows(&mut self, affected_rows: u16) {
+        self.affected_rows = self.affected_rows + affected_rows;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ds::MemGuard;
