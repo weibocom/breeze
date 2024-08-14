@@ -110,6 +110,9 @@ where
         let operation = req.operation();
         req.attachment_mut()
             .get_or_insert(VectorAttach::new(operation).to_attach());
+
+        // TODO 这里需要根据operation选择不同的shard fishermen
+
         //分别代表请求的轮次和每轮重试次数
         let (round, runs) = (req.attach().round, req.ctx_mut().runs);
         //runs == 0 表示第一轮第一次请求
