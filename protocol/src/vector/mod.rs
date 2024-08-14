@@ -228,7 +228,8 @@ impl Protocol for Vector {
                 }
             }
             AttachType::Store => {
-                // TODO 先提交，稍后进行effected rows 更新 fishermen
+                let store_attach = vec_attach.store_attach_mut();
+                store_attach.incr_affected_rows(response.count() as u16);
                 true
             }
             _ => {
