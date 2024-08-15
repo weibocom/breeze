@@ -492,6 +492,7 @@ impl<T: crate::kv::prelude::Protocol, S: Stream> Drop for ResultSet<'_, '_, T, S
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetColumns<'a> {
     inner: Option<&'a Arc<[Column]>>,

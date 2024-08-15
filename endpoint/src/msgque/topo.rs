@@ -16,6 +16,7 @@ use super::{
     ReadStrategy, WriteStrategy,
 };
 use crate::dns::{DnsConfig, DnsLookup};
+use crate::msgque::SizedQueueInfo;
 use crate::{CloneAbleAtomicBool, Endpoint, Endpoints, Timeout, Topology};
 use sharding::hash::{Hash, HashKey, Hasher, Padding};
 
@@ -121,6 +122,7 @@ where
 
         // 将访问次数加一，并返回之前的访问次数
         let tried_count = ctx.get_and_incr_tried_count();
+        let last_qid = ctx.get_last_qid(inited);
 
         // 队列始终不需要write back，即写成功后不需要继回写
         assert!(!req.is_write_back());
@@ -128,16 +130,16 @@ where
         // 对于读请求：顺序读取队列，如果队列都去了到数据，就连续读N个，如果没读到，则尝试下一个ip，直到轮询完所有的ip
         // 注意空读后的最后一次请求，会概率尝试访问offline
         let (qid, try_next) = if req.operation().is_retrival() {
-            let qid = self.reader_strategy.get_read_idx();
+            let qid = self.reader_strategy.get_read_idx(last_qid);
+            ctx.update_qid(qid as u16);
             let try_next = (tried_count + 1) < self.backends.len();
             (qid, try_next)
         } else {
             debug_assert!(req.operation().is_store());
-
-            let last_wid = ctx.get_last_qid(inited);
-            let wid = self.writer_strategy.get_write_idx(req.len(), last_wid);
+            let (wid, try_next) =
+                self.writer_strategy
+                    .get_write_idx(req.len(), last_qid, tried_count);
             ctx.update_qid(wid as u16);
-            let try_next = (wid + 1) < self.writers.len();
 
             assert!(wid < self.writers.len(), "{}/{}", wid, self);
             (*self.writers.get(wid).expect("mq write"), try_next)
@@ -258,11 +260,11 @@ where
 
         // 将按size分的ip列表按顺序放置，记录每个size的que的起始位置
         let mut ordered_ques = Vec::with_capacity(qaddrs.len());
-        let mut qsize_poses = Vec::with_capacity(qaddrs.len());
+        let mut sized_qinfos = Vec::with_capacity(qaddrs.len());
         let mut rng = thread_rng();
         for (i, mut adrs) in qaddrs.into_iter().enumerate() {
             let qs = qsizes[i];
-            qsize_poses.push((qs, ordered_ques.len()));
+            sized_qinfos.push(SizedQueueInfo::new(qs, ordered_ques.len(), adrs.len()));
 
             // 对每个size的ip列表进行随机排序
             adrs.shuffle(&mut rng);
@@ -276,7 +278,7 @@ where
 
         // 设置读写策略
         self.reader_strategy = RoundRobbin::new(self.backends.len());
-        self.writer_strategy = Fixed::new(self.writers.len(), &qsize_poses);
+        self.writer_strategy = Fixed::new(self.writers.len(), sized_qinfos);
 
         log::debug!("+++ mq loaded: {}", self);
 

@@ -44,7 +44,7 @@ impl Protocol for Vector {
         let mut packet = RequestPacket::new(stream);
         match self.parse_request_inner(&mut packet, alg, process) {
             Ok(_) => Ok(()),
-            Err(Error::ProtocolIncomplete) => {
+            Err(Error::ProtocolIncomplete(0)) => {
                 // 如果解析数据不够，提前reserve stream的空间
                 packet.reserve_stream_buff();
                 Ok(())
@@ -71,7 +71,7 @@ impl Protocol for Vector {
         log::debug!("+++ vector handshake");
         match self.handshake_inner(stream, option) {
             Ok(h) => Ok(h),
-            Err(crate::Error::ProtocolIncomplete) => Ok(HandShake::Continue),
+            Err(crate::Error::ProtocolIncomplete(0)) => Ok(HandShake::Continue),
             Err(e) => {
                 log::warn!("+++ found err when shake hand:{:?}", e);
                 Err(e)
@@ -86,7 +86,7 @@ impl Protocol for Vector {
         // 解析完毕rsp后，除了数据未读完的场景，其他不管是否遇到err，都要进行take
         match self.parse_response_inner(&mut rsp_packet) {
             Ok(cmd) => Ok(Some(cmd)),
-            Err(crate::Error::ProtocolIncomplete) => {
+            Err(crate::Error::ProtocolIncomplete(0)) => {
                 rsp_packet.reserve();
                 Ok(None)
             }
@@ -446,6 +446,7 @@ impl FieldVal {
 
 pub trait Strategy {
     fn keys(&self) -> &[String];
+    fn keys_len(&self, cmd: CommandType) -> usize;
     //todo 通过代理类型实现
     fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_>;
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64);

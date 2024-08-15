@@ -35,6 +35,10 @@ fn checkout_basic() {
         size_of::<protocol::StreamContext>(),
         size_of::<protocol::redis::RequestContext>()
     );
+    assert_eq!(
+        size_of::<protocol::StreamContext>(),
+        size_of::<protocol::redis::ResponseContext>()
+    );
     assert_eq!(16, size_of::<protocol::Flag>());
     assert_eq!(1, size_of::<protocol::Resource>());
     //assert_eq!(56, size_of::<ds::queue::PinnedQueue<AtomicU32>>());
