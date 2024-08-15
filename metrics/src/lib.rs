@@ -56,15 +56,17 @@ impl Metric {
     // 从global 同步item
     #[cold]
     #[inline(never)]
-    fn rsync(&mut self, flush: bool) {
+    fn rsync(&mut self, sync: bool) {
         debug_assert!(self.item().is_local());
         if let Position::Local(id) = &self.item().pos {
-            if let Some(item) = crate::get_item(&*id) {
-                self.item = ItemPtr::global(item);
-            }
-        } else {
-            if flush {
-                self.item().flush();
+            if sync {
+                if let Some(item) = crate::flush_or_merge_item(&self.item, id.t.need_flush()) {
+                    self.item = item;
+                }
+            } else {
+                if let Some(item) = crate::get_item(&*id) {
+                    self.item = ItemPtr::global(item);
+                }
             }
         }
     }
@@ -215,17 +217,12 @@ impl Item {
     pub(crate) fn snapshot<W: crate::ItemWriter>(&self, id: &Id, w: &mut W, secs: f64) {
         id.t.snapshot(&id.path, &id.key, &self.data, w, secs);
     }
-    #[inline]
-    pub(crate) fn flush(&self) {
-        debug_assert!(self.is_local());
-        crate::flush_item(self);
-    }
 }
 
 impl Drop for Item {
     fn drop(&mut self) {
         assert!(self.is_local(), "{:?}", self.pos);
-        self.flush();
+        crate::flush_or_merge_item(self, true);
     }
 }
 

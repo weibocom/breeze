@@ -105,13 +105,21 @@ impl<P, Req> BackendChecker<P, Req> {
             let handler = Handler::from(rx, stream, p, path_addr.clone());
             let handler = Entry::timeout(handler, Timeout::from(self.timeout.ms()));
             let ret = handler.await;
-            log::error!("backend error {:?} => {:?}", path_addr, ret);
+            println!(
+                "backend error {:?} => {:?} finish: {}",
+                path_addr,
+                ret,
+                self.finish.get()
+            );
             // handler 一定返回err，不会返回ok
             match ret.err().expect("handler return ok") {
                 Error::Eof | Error::IO(_) => {}
                 Error::Timeout(_t) => {
                     m_timeout += 1;
                     timeout += 1;
+                }
+                Error::ChanReadClosed => {
+                    debug_assert!(!self.finish.get(), "channel closed but not finish");
                 }
                 Error::UnexpectedData | _ => {
                     let mut unexpected_resp = Path::base().num("unexpected_resp");

@@ -80,6 +80,16 @@ pub(crate) enum MetricType {
     Count,
 }
 
+impl MetricType {
+    //不经常更新的数据才需要flush
+    pub fn need_flush(&self) -> bool {
+        match self {
+            MetricType::Status(_) | MetricType::Count(_) => true,
+            _ => false,
+        }
+    }
+}
+
 impl Default for MetricType {
     fn default() -> Self {
         Self::Empty(Empty)

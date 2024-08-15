@@ -2,7 +2,6 @@ use ds::BrzMalloc;
 #[global_allocator]
 static GLOBAL: BrzMalloc = BrzMalloc {};
 
-mod console;
 mod http;
 mod prometheus;
 mod service;

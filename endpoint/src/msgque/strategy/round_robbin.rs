@@ -3,10 +3,13 @@ use std::fmt::{Display, Formatter};
 use crate::{msgque::ReadStrategy, CloneableAtomicUsize};
 use std::sync::atomic::Ordering::Relaxed;
 
+// const HITS_BITS: u32 = 8;
+
 /// 依次轮询队列列表，注意整个列表在初始化时需要进行随机乱序处理
 #[derive(Debug, Clone, Default)]
 pub struct RoundRobbin {
     que_len: usize,
+    // 去掉8bit的盯读策略，写改为轮询写，读也对应改为轮询读，同时miss后不重试，ip72看效果明显，后续继续观察 fishermen
     current_pos: CloneableAtomicUsize,
 }
 
@@ -17,15 +20,30 @@ impl ReadStrategy for RoundRobbin {
         let rand: usize = rand::random();
         Self {
             que_len: reader_len,
-            // current_pos: Arc::new(AtomicUsize::new(rand)),
             current_pos: CloneableAtomicUsize::new(rand),
         }
     }
     /// 实现策略很简单：持续轮询
     #[inline]
-    fn get_read_idx(&self) -> usize {
-        let pos = self.current_pos.fetch_add(1, Relaxed);
-        pos.wrapping_rem(self.que_len)
+    fn get_read_idx(&self, _last_idx: Option<usize>) -> usize {
+        let origin_pos = self.current_pos.fetch_add(1, Relaxed);
+        origin_pos.wrapping_rem(self.que_len)
+
+        // TODO 去掉8bit盯读策略，先注释掉，目前灰度观察OK，线上没问题后，再删除，预计2024.9后可以清理 fishermen
+        // let pos = match last_idx {
+        //     None => origin_pos,
+        //     Some(lidx) => {
+        //         // 将pos向后移动一个位置，如果已经被移动了，则不再移动
+        //         if lidx == origin_pos.que_idx(self.que_len) {
+        //             let new_pos = (lidx + 1).pos();
+        //             self.current_pos.store(new_pos, Relaxed);
+        //             new_pos
+        //         } else {
+        //             origin_pos
+        //         }
+        //     }
+        // };
+        // pos.que_idx(self.que_len)
     }
 }
 
@@ -39,3 +57,25 @@ impl Display for RoundRobbin {
         )
     }
 }
+
+// /// pos：低8位为单个idx的持续读取计数，高56位为队列的idx序号
+// trait Pos {
+//     fn que_idx(&self, que_len: usize) -> usize;
+// }
+
+// impl Pos for usize {
+//     fn que_idx(&self, que_len: usize) -> usize {
+//         self.wrapping_shr(HITS_BITS).wrapping_rem(que_len)
+//     }
+// }
+
+// /// idx是队列的idx序号，通过将idx左移8位来构建一个新的pos
+// trait Idx {
+//     fn pos(&self) -> usize;
+// }
+
+// impl Idx for usize {
+//     fn pos(&self) -> usize {
+//         self.wrapping_shl(HITS_BITS)
+//     }
+// }

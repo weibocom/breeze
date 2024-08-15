@@ -55,7 +55,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
     #[inline]
     fn start_with(&self, oft: usize, s: &[u8]) -> Result<bool> {
         if oft + s.len() > self.data.len() {
-            Err(crate::Error::ProtocolIncomplete)
+            Err(crate::Error::ProtocolIncomplete(0))
         } else {
             Ok(self.data.start_with(oft, s))
         }
@@ -64,7 +64,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
     // memcache rsponse 解析的状态机，后续考虑优化 fishermen
     pub(super) fn parse(&mut self) -> Result<()> {
         if self.data.len() < 2 {
-            return Err(super::Error::ProtocolIncomplete);
+            return Err(super::Error::ProtocolIncomplete(0));
         }
 
         let mut state = RspPacketState::RspStr;
@@ -209,7 +209,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
                 RspPacketState::Val => {
                     token = self.oft + vlen;
                     if token >= self.data.len() {
-                        return Err(super::Error::ProtocolIncomplete);
+                        return Err(super::Error::ProtocolIncomplete(0));
                     }
                     self.skip(vlen)?;
                     match self.current() {
@@ -276,7 +276,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
 
             self.skip(1)?;
         }
-        Err(super::Error::ProtocolIncomplete)
+        Err(super::Error::ProtocolIncomplete(0))
     }
 
     pub(super) fn delay_metric(&mut self) -> Result<()> {
@@ -344,7 +344,7 @@ impl<'a, S: crate::Stream> RspPacket<'a, S> {
         if self.oft <= self.data.len() {
             return Ok(());
         }
-        return Err(super::Error::ProtocolIncomplete);
+        return Err(super::Error::ProtocolIncomplete(0));
     }
 
     #[inline]

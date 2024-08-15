@@ -196,7 +196,7 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
     // fn _next_packet(&mut self) -> Result<RingSlice> {
     //     match self.try_next_packet() {
     //         Ok(pld) => Ok(pld),
-    //         Err(Error::ProtocolIncomplete) => Err(crate::Error::ProtocolIncomplete),
+    //         Err(Error::ProtocolIncomplete(0)) => Err(crate::Error::ProtocolIncomplete(0)),
     //         Err(e) => {
     //             // 发现异常，说明异常数据已读完，此处统一take
     //             self.take();

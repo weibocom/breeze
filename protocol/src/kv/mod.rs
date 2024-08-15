@@ -74,7 +74,7 @@ impl Protocol for Kv {
     ) -> crate::Result<HandShake> {
         match self.handshake_inner(stream, option) {
             Ok(h) => Ok(h),
-            Err(crate::Error::ProtocolIncomplete) => Ok(HandShake::Continue),
+            Err(crate::Error::ProtocolIncomplete(0)) => Ok(HandShake::Continue),
             Err(e) => {
                 log::warn!("+++ found err when shake hand:{:?}", e);
                 Err(e)
@@ -143,7 +143,7 @@ impl Protocol for Kv {
         // 解析完毕rsp后，除了数据未读完的场景，其他不管是否遇到err，都要进行take
         match self.parse_response_inner(&mut rsp_packet) {
             Ok(cmd) => Ok(Some(cmd)),
-            Err(crate::Error::ProtocolIncomplete) => Ok(None),
+            Err(crate::Error::ProtocolIncomplete(0)) => Ok(None),
             Err(e) => {
                 // 非MysqlError需要日志并外层断连处理
                 log::error!("+++ err when parse mysql response: {:?}", e);

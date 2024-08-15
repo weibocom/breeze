@@ -10,7 +10,7 @@ use crate::{
     Command, Commander, Error, HashedCommand, Metric, MetricItem, MetricName, Protocol,
     RequestProcessor, Result, Stream, Writer,
 };
-pub use packet::Packet;
+pub use packet::{transmute, Packet, ResponseContext};
 use sharding::hash::Hash;
 
 #[derive(Clone, Default)]
@@ -70,23 +70,23 @@ impl Redis {
     }
 
     #[inline]
-    fn parse_response_inner<S: Stream>(
-        &self,
-        s: &mut S,
-        oft: &mut usize,
-    ) -> Result<Option<Command>> {
+    pub fn parse_response_inner<S: Stream>(&self, s: &mut S) -> Result<Option<Command>> {
         let data: Packet = s.slice().into();
+        let ctx: &mut ResponseContext = transmute(s.context());
         log::debug!("+++ will parse redis rsp:{:?}", data);
-        data.check_onetoken(*oft)?;
 
         match data.at(0) {
-            b'-' | b':' | b'+' => data.line(oft)?,
-            b'$' => *oft += data.num_of_string(oft)? + 2,
-            b'*' => data.skip_all_bulk(oft)?,
+            b'-' | b':' | b'+' => data.line(&mut ctx.oft)?,
+            b'$' => data.skip_string_check(&mut ctx.oft)?,
+            b'*' => data.skip_multibulks_with_ctx(ctx)?,
             _ => return Err(RedisError::RespInvalid.into()),
         }
 
-        Ok((*oft <= data.len()).then(|| Command::from_ok(s.take(*oft))))
+        let oft = ctx.oft;
+        assert!(oft != 0);
+        assert!(oft <= data.len());
+        ctx.oft = 0;
+        Ok(Some(Command::from_ok(s.take(oft))))
     }
 }
 
@@ -108,7 +108,7 @@ impl Protocol for Redis {
         let mut packet = RequestPacket::new(stream);
         match self.parse_request_inner(&mut packet, alg, process) {
             Ok(_) => Ok(()),
-            Err(Error::ProtocolIncomplete) => {
+            Err(Error::ProtocolIncomplete(0)) => {
                 // 如果解析数据不够，提前reserve stream的空间
                 packet.reserve_stream_buff();
                 Ok(())
@@ -123,15 +123,12 @@ impl Protocol for Redis {
     // 为每一个req解析一个response
     #[inline]
     fn parse_response<S: Stream>(&self, data: &mut S) -> Result<Option<Command>> {
-        let mut oft = 0;
-        match self.parse_response_inner(data, &mut oft) {
+        match self.parse_response_inner(data) {
             Ok(cmd) => Ok(cmd),
-            Err(Error::ProtocolIncomplete) => {
-                //assert!(oft + 3 >= data.len(), "oft:{} => {:?}", oft, data.slice());
-                if oft > data.len() {
-                    data.reserve(oft - data.len());
+            Err(Error::ProtocolIncomplete(left)) => {
+                if left > 0 {
+                    data.reserve(left);
                 }
-
                 Ok(None)
             }
             e => e,
