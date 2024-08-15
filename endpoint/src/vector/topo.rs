@@ -84,7 +84,8 @@ where
         match vcmd.cmd {
             CommandType::VRange => {
                 //根据round获取si
-                let si_items = req.attach().si();
+                let attach = req.attach().retrieve_attach();
+                let si_items = attach.si();
                 assert!(si_items.len() > 0, "si_items.len() = 0");
                 assert!(
                     round <= si_items.len() as u16,
@@ -95,9 +96,9 @@ where
 
                 let year = si_item.date.year as u16 + 2000;
                 //构建sql
-                let limit = req.attach().left_count.min(si_item.count);
+                let limit = attach.left_count.min(si_item.count);
                 assert!(si_item.count > 0, "{}", si_item.count);
-                assert!(req.attach().left_count > 0, "{}", req.attach().left_count);
+                assert!(attach.left_count > 0, "{}", attach.left_count);
 
                 let Some(date) = NaiveDate::from_ymd_opt(year.into(), si_item.date.month.into(), 1)
                 else {
