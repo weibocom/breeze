@@ -1,8 +1,9 @@
-use super::{strategy::Postfix, uuid::*};
+use super::uuid::*;
 use chrono::{Datelike, NaiveDate};
 use core::fmt::Write;
 use ds::RingSlice;
 use protocol::kv::Strategy;
+use protocol::vector::Postfix;
 use sharding::hash::Hash;
 use sharding::{distribution::DBRange, hash::Hasher};
 

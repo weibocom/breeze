@@ -7,7 +7,7 @@ use crate::{Error, Result};
 use chrono::NaiveDate;
 use ds::RingSlice;
 
-use super::Strategy;
+use super::{KeysType, Strategy};
 
 struct VRingSlice<'a>(&'a RingSlice);
 impl<'a> Display for VRingSlice<'a> {
@@ -107,8 +107,8 @@ struct InsertCols<'a, S>(&'a S, &'a Vec<Field>);
 impl<'a, S: Strategy> Display for InsertCols<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self(strategy, fields) = self;
-        for (i, key) in (&mut strategy.condition_keys()).enumerate() {
-            if let Some(key) = key {
+        for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
+            if let KeysType::Keys(key) = key {
                 if i == 0 {
                     let _ = write!(f, "`{}`", key);
                 } else {
@@ -127,8 +127,8 @@ struct InsertVals<'a, S>(&'a S, &'a Vec<RingSlice>, &'a Vec<Field>);
 impl<'a, S: Strategy> Display for InsertVals<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self(strategy, keys, fields) = self;
-        for (i, key) in (&mut strategy.condition_keys()).enumerate() {
-            if let Some(_) = key {
+        for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
+            if let KeysType::Keys(_) = key {
                 if i == 0 {
                     let _ = write!(f, "{}", Val(&keys[i]));
                 } else {
@@ -173,8 +173,8 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
             },
             extra,
         ) = self;
-        for (i, key) in (&mut strategy.condition_keys()).enumerate() {
-            if let Some(key) = key {
+        for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
+            if let KeysType::Keys(key) = key {
                 if i == 0 {
                     let _ = write!(f, "`{}`={}", key, Val(&keys[i]));
                 } else {
@@ -291,7 +291,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
         base.max(64)
     }
 
-    fn write_sql(&self, buf: &mut impl Write) {
+    fn write_sql(&self, buf: &mut impl Write) -> crate::Result<()> {
         match self.vcmd.cmd {
             CommandType::VRange | CommandType::VGet => {
                 let _ = write!(
@@ -341,6 +341,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                 panic!("not support cmd_type:{:?}", self.vcmd.cmd);
             }
         }
+        Ok(())
     }
 }
 
@@ -383,7 +384,8 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
 
     // select date，count字段名，
     // 条件需要key，字段名
-    fn write_sql(&self, buf: &mut impl Write) {
+
+    fn write_sql(&self, buf: &mut impl Write) -> crate::Result<()> {
         match self.vcmd.cmd {
             CommandType::VRange => {
                 let _ = write!(
@@ -394,11 +396,29 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
                     SiKeysAndCondsAndOrder(self.strategy, &self.vcmd),
                 );
             }
+            // 1.1. 更新si： insert into $db$.$tb$ (uid, object_type, start_date, count) values (?, ?, ?, 1) on duplicate key update count=greatest(0, cast(count as signed) + 1)。
+            // 1.2. 根据设置更新timeline：insert into $db$.$tb$ (uid, object_type, like_id, object_id) values (?, ?, ?, ?)
+            // 备注：有些场景只更新si，有些场景只更新timeline，需要业务修改时考虑。
+            // 1.3. mesh cmd: vadd $uid,$date object_type $obj_type object_id $obj_id like_id $like_id
+            CommandType::VAdd => {
+                let count = self.strategy.si_cols().last().unwrap();
+                //对si表的更新插入至少需要keys + count + counttype 这些字段，下面会兜底校验
+                write!(
+                    buf,
+                    "insert into {} ({}) values ({}) on duplicate key update {}=greatest(0, cast({} as signed) + 1)",
+                    SiTable(self.strategy, self.hash),
+                    SiInsertCols(self.strategy, &self.vcmd.fields),
+                    SiInsertVals(self.strategy, &self.vcmd.keys, &self.vcmd.fields),
+                    count,
+                    count,
+                ).map_err(|_| Error::RequestProtocolInvalid)?;
+            }
             _ => {
                 //校验应该在parser_req出
                 panic!("not support cmd_type:{:?}", self.vcmd.cmd);
             }
-        }
+        };
+        Ok(())
     }
 }
 
@@ -447,6 +467,64 @@ struct SiTable<'a, S>(&'a S, i64);
 impl<'a, S: Strategy> Display for SiTable<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.write_si_database_table(f, self.1);
+        Ok(())
+    }
+}
+
+struct SiInsertCols<'a, S>(&'a S, &'a Vec<Field>);
+impl<'a, S: Strategy> Display for SiInsertCols<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &Self(strategy, fields) = self;
+        //默认最后一个为date列
+        for (i, key) in strategy.keys().iter().enumerate() {
+            if i == 0 {
+                let _ = write!(f, "`{}`", key);
+            } else {
+                let _ = write!(f, ",`{}`", key);
+            }
+        }
+        let mut has_count_type = false;
+        let si_cols = strategy.si_cols();
+        for field in fields {
+            for col in si_cols {
+                if field.0.equal(col.as_bytes()) {
+                    let _ = write!(f, ",{}", Key(&field.0));
+                    has_count_type = true;
+                }
+            }
+        }
+        //必须提供count_type
+        if si_cols.len() > 2 && !has_count_type {
+            return Err(std::fmt::Error);
+        }
+        //count
+        let _ = write!(f, ",{}", si_cols.last().unwrap());
+        Ok(())
+    }
+}
+
+struct SiInsertVals<'a, S>(&'a S, &'a Vec<RingSlice>, &'a Vec<Field>);
+impl<'a, S: Strategy> Display for SiInsertVals<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &Self(strategy, keys, fields) = self;
+        //默认最后一个为date列
+        for (i, key) in keys.iter().enumerate() {
+            if i == 0 {
+                let _ = write!(f, "{}", Val(key));
+            } else {
+                let _ = write!(f, ",{}", Val(key));
+            }
+        }
+        let si_cols = strategy.si_cols();
+        for field in fields {
+            for col in si_cols {
+                if field.0.equal(col.as_bytes()) {
+                    let _ = write!(f, ",{}", Val(&field.1));
+                }
+            }
+        }
+        // count
+        let _ = f.write_str(",1");
         Ok(())
     }
 }
