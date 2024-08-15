@@ -444,11 +444,32 @@ impl FieldVal {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum Postfix {
+    YYMM,
+    YYMMDD,
+    INDEX,
+}
+
+impl Into<Postfix> for &str {
+    fn into(self) -> Postfix {
+        match self.to_lowercase().as_str() {
+            "yymm" => Postfix::YYMM,
+            _ => Postfix::YYMMDD,
+        }
+    }
+}
+
+pub enum KeysType<'a> {
+    Keys(&'a String),
+    Time,
+}
+
 pub trait Strategy {
     fn keys(&self) -> &[String];
     fn keys_len(&self, cmd: CommandType) -> usize;
     //todo 通过代理类型实现
-    fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_>;
+    fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_>;
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64);
     fn write_si_database_table(&self, buf: &mut impl Write, hash: i64);
     fn batch(&self, limit: u64, vcmd: &VectorCmd) -> u64;

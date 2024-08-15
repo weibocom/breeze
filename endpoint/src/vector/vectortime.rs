@@ -1,11 +1,11 @@
 use crate::kv::kvtime::KVTime;
 
-use super::strategy::Postfix;
 use chrono::NaiveDate;
 use core::fmt::Write;
 use ds::RingSlice;
-use protocol::kv::Strategy;
+use protocol::vector::Postfix;
 use protocol::Error;
+use protocol::{kv::Strategy, vector::KeysType};
 use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]
@@ -105,14 +105,14 @@ impl VectorTime {
         &self.keys_name
     }
 
-    pub(crate) fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
+    pub(crate) fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_> {
         Box::new(
             self.keys_name
                 .iter()
                 .map(|key_name| match key_name.as_str() {
-                    "yymm" | "yymmdd" => None,
+                    "yymm" | "yymmdd" => KeysType::Time,
                     // "yyyymm" | "yyyymmdd" => None,
-                    &_ => Some(key_name),
+                    &_ => KeysType::Keys(key_name),
                 }),
         )
     }

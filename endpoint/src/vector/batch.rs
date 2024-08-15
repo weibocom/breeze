@@ -1,9 +1,6 @@
-use super::strategy::Postfix;
 use chrono::{Datelike, NaiveDate};
-use chrono_tz::Tz;
 use core::fmt::Write;
-use ds::RingSlice;
-use protocol::{vector::CommandType, Error};
+use protocol::vector::{CommandType, Postfix};
 use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]
@@ -63,11 +60,6 @@ impl Batch {
         &self.hasher
     }
 
-    pub fn get_date(&self, _: &[RingSlice]) -> Result<NaiveDate, Error> {
-        let now = chrono::Utc::now().with_timezone(&Tz::Asia__Shanghai);
-        Ok(NaiveDate::from_ymd_opt(now.year(), now.month(), now.day()).unwrap())
-    }
-
     pub fn write_dname_with_hash(&self, buf: &mut impl Write, hash: i64) {
         let db_idx: usize = self.distribution.db_idx(hash);
         let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
@@ -99,10 +91,6 @@ impl Batch {
 
     pub(crate) fn write_si_database_table(&self, buf: &mut impl Write, hash: i64) {
         self.si.write_database_table(buf, hash)
-    }
-
-    pub(crate) fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
-        Box::new(self.keys_name.iter().map(|x| Some(x)))
     }
 
     pub(crate) fn keys(&self) -> &[String] {
