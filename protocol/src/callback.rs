@@ -49,6 +49,7 @@ pub struct CallbackContext {
     quota: Option<BackendQuota>,
     attachment: Option<Attachment>, // 附加数据，用于辅助请求和响应，目前只有kvector在使用
     drop_attach: Option<Box<dyn Fn(Attachment)>>,
+    next_action: u8, // 下一步动作
 }
 
 impl CallbackContext {
@@ -85,6 +86,7 @@ impl CallbackContext {
             quota: None,
             attachment: None,
             drop_attach,
+            next_action: 0,
         }
     }
 
@@ -350,6 +352,11 @@ impl CallbackContext {
     #[inline]
     pub fn set_fitst_try(&mut self) {
         self.tries = 0.into();
+    }
+
+    #[inline]
+    pub fn with_next_action(&mut self, next_action: u8) {
+        self.next_action = next_action;
     }
 }
 
