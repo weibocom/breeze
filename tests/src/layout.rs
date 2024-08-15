@@ -51,7 +51,7 @@ fn checkout_basic() {
     assert_eq!(24, size_of::<sharding::hash::Hasher>());
     assert_eq!(
         size_of::<protocol::Attachment>(),
-        size_of::<protocol::vector::attachment::VecAttach>()
+        size_of::<protocol::vector::attachment::VectorAttach>()
     );
 }
 
