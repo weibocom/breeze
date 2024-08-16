@@ -1,9 +1,10 @@
-use super::strategy::Postfix;
 use chrono::{Datelike, NaiveDate};
-use chrono_tz::Tz;
 use core::fmt::Write;
 use ds::RingSlice;
-use protocol::{vector::CommandType, Error};
+use protocol::{
+    vector::{CommandType, KeysType, Postfix},
+    Error,
+};
 use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]
@@ -63,11 +64,6 @@ impl Batch {
         &self.hasher
     }
 
-    pub fn get_date(&self, _: &[RingSlice]) -> Result<NaiveDate, Error> {
-        let now = chrono::Utc::now().with_timezone(&Tz::Asia__Shanghai);
-        Ok(NaiveDate::from_ymd_opt(now.year(), now.month(), now.day()).unwrap())
-    }
-
     pub fn write_dname_with_hash(&self, buf: &mut impl Write, hash: i64) {
         let db_idx: usize = self.distribution.db_idx(hash);
         let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
@@ -101,12 +97,49 @@ impl Batch {
         self.si.write_database_table(buf, hash)
     }
 
-    pub(crate) fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
-        Box::new(self.keys_name.iter().map(|x| Some(x)))
-    }
-
     pub(crate) fn keys(&self) -> &[String] {
         &self.keys_name
+    }
+
+    pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate, Error> {
+        let mut ymd = (0u16, 0u16, 0u16);
+        for (i, key_name) in self.keys_name.iter().enumerate() {
+            match key_name.as_str() {
+                "yymm" => {
+                    ymd = (
+                        keys[i]
+                            .try_str_num(0..0 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16
+                            + 2000,
+                        keys[i]
+                            .try_str_num(2..2 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                        1,
+                    );
+                    break;
+                }
+                "yymmdd" => {
+                    ymd = (
+                        keys[i]
+                            .try_str_num(0..0 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16
+                            + 2000,
+                        keys[i]
+                            .try_str_num(2..2 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                        keys[i]
+                            .try_str_num(4..4 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                    );
+                    break;
+                }
+                &_ => {
+                    continue;
+                }
+            }
+        }
+        NaiveDate::from_ymd_opt(ymd.0.into(), ymd.1.into(), ymd.2.into())
+            .ok_or(Error::RequestProtocolInvalid)
     }
 
     // pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
@@ -132,6 +165,18 @@ impl Batch {
             CommandType::VAdd | CommandType::VDel => self.keys().len(),
             _ => panic!("not sup {cmd:?}"),
         }
+    }
+
+    pub(crate) fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_> {
+        Box::new(
+            self.keys_name
+                .iter()
+                .map(|key_name| match key_name.as_str() {
+                    "yymm" | "yymmdd" => KeysType::Time,
+                    // "yyyymm" | "yyyymmdd" => None,
+                    &_ => KeysType::Keys(key_name),
+                }),
+        )
     }
 }
 

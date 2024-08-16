@@ -1,9 +1,8 @@
 use std::fmt::Write;
 
-pub use crate::kv::strategy::Postfix;
 use chrono::NaiveDate;
 use ds::RingSlice;
-use protocol::vector::CommandType;
+use protocol::vector::{CommandType, KeysType, Postfix};
 use protocol::Result;
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
@@ -40,9 +39,9 @@ impl Strategist {
     pub fn try_from(ns: &VectorNamespace) -> Option<Self> {
         Some(match ns.basic.strategy.as_str() {
             "aggregation" => {
-                //至少需要date和count两个字段名
-                if ns.basic.si_cols.len() < 2 || ns.basic.keys.len() != 1 {
-                    log::warn!("len si_cols < 2 or len keys != 1");
+                //至少需要date和count两个字段名，keys至少需要id+time
+                if ns.basic.si_cols.len() < 2 || ns.basic.keys.len() < 2 {
+                    log::warn!("len si_cols < 2 or len keys < 1");
                     return None;
                 }
                 Self::Batch(Batch::new_with_db(
@@ -130,11 +129,10 @@ impl protocol::vector::Strategy for Strategist {
             Strategist::Batch(inner) => inner.keys_len(cmd),
         }
     }
-
-    fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
+    fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_> {
         match self {
-            Strategist::VectorTime(inner) => inner.condition_keys(),
-            Strategist::Batch(inner) => inner.condition_keys(),
+            Strategist::VectorTime(inner) => inner.keys_with_type(),
+            Strategist::Batch(inner) => inner.keys_with_type(),
         }
     }
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
@@ -250,7 +248,7 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -276,7 +274,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -324,7 +322,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -367,7 +365,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -408,7 +406,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -462,7 +460,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -505,7 +503,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -534,7 +532,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -560,7 +558,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -608,7 +606,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
