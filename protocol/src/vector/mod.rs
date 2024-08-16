@@ -191,7 +191,7 @@ impl Protocol for Vector {
 
     // 将中间响应放到attachment中，方便后续继续查询
     // 先收集si信息，再收集body
-    // 返回值：是否需要继续查询
+    // 返回值：是否为最后一轮
     #[inline]
     fn update_attachment(&self, attachment: &mut Attachment, response: &mut Command) -> bool {
         assert!(response.ok());
@@ -230,7 +230,7 @@ impl Protocol for Vector {
             AttachType::Store => {
                 let store_attach = vec_attach.store_attach_mut();
                 store_attach.incr_affected_rows(response.count() as u16);
-                true
+                false
             }
             _ => {
                 panic!("malformed attach");

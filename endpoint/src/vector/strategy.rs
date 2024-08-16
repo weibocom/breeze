@@ -39,9 +39,9 @@ impl Strategist {
     pub fn try_from(ns: &VectorNamespace) -> Option<Self> {
         Some(match ns.basic.strategy.as_str() {
             "aggregation" => {
-                //至少需要date和count两个字段名
-                if ns.basic.si_cols.len() < 2 || ns.basic.keys.len() != 1 {
-                    log::warn!("len si_cols < 2 or len keys != 1");
+                //至少需要date和count两个字段名，keys至少需要id+time
+                if ns.basic.si_cols.len() < 2 || ns.basic.keys.len() < 2 {
+                    log::warn!("len si_cols < 2 or len keys < 1");
                     return None;
                 }
                 Self::Batch(Batch::new_with_db(
@@ -96,7 +96,7 @@ impl Strategist {
     pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate> {
         match self {
             Strategist::VectorTime(inner) => inner.get_date(keys),
-            Strategist::Batch(_) => panic!("not support"),
+            Strategist::Batch(inner) => inner.get_date(keys),
         }
     }
     // 请求成功后，是否有更多的数据需要请求
@@ -132,7 +132,7 @@ impl protocol::vector::Strategy for Strategist {
     fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_> {
         match self {
             Strategist::VectorTime(inner) => inner.keys_with_type(),
-            Strategist::Batch(_) => panic!("not support"),
+            Strategist::Batch(inner) => inner.keys_with_type(),
         }
     }
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
