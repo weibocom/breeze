@@ -4,7 +4,7 @@ use crate::kv::common::Command;
 use crate::kv::{MysqlBinary, VectorSqlBuilder};
 use crate::vector::{CommandType, Condition, Field, VectorCmd};
 use crate::{Error, Result};
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use ds::RingSlice;
 
 use super::{KeysType, Strategy};
@@ -349,10 +349,11 @@ pub struct SiSqlBuilder<'a, S> {
     vcmd: &'a VectorCmd,
     hash: i64,
     strategy: &'a S,
+    date: NaiveDate,
 }
 
 impl<'a, S: Strategy> SiSqlBuilder<'a, S> {
-    pub fn new(vcmd: &'a VectorCmd, hash: i64, strategy: &'a S) -> Result<Self> {
+    pub fn new(vcmd: &'a VectorCmd, hash: i64, date: NaiveDate, strategy: &'a S) -> Result<Self> {
         if vcmd.keys.len() != strategy.keys_len(vcmd.cmd) {
             Err(Error::RequestProtocolInvalid)
         } else {
@@ -360,6 +361,7 @@ impl<'a, S: Strategy> SiSqlBuilder<'a, S> {
                 vcmd,
                 hash,
                 strategy,
+                date,
             })
         }
     }
@@ -408,7 +410,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
                     "insert into {} ({}) values ({}) on duplicate key update {}=greatest(0, cast({} as signed) + 1)",
                     SiTable(self.strategy, self.hash),
                     SiInsertCols(self.strategy, &self.vcmd.fields),
-                    SiInsertVals(self.strategy, &self.vcmd.keys, &self.vcmd.fields),
+                    SiInsertVals(self.strategy,&self.date, &self.vcmd.keys, &self.vcmd.fields),
                     count,
                     count,
                 ).map_err(|_| Error::RequestProtocolInvalid)?;
@@ -475,12 +477,13 @@ struct SiInsertCols<'a, S>(&'a S, &'a Vec<Field>);
 impl<'a, S: Strategy> Display for SiInsertCols<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self(strategy, fields) = self;
-        //默认最后一个为date列
-        for (i, key) in strategy.keys().iter().enumerate() {
-            if i == 0 {
-                let _ = write!(f, "`{}`", key);
-            } else {
-                let _ = write!(f, ",`{}`", key);
+        for (i, key) in strategy.keys_with_type().enumerate() {
+            if let KeysType::Keys(key) = key {
+                if i == 0 {
+                    let _ = write!(f, "`{}`", key);
+                } else {
+                    let _ = write!(f, ",`{}`", key);
+                }
             }
         }
         let mut has_count_type = false;
@@ -497,22 +500,28 @@ impl<'a, S: Strategy> Display for SiInsertCols<'a, S> {
         if si_cols.len() > 2 && !has_count_type {
             return Err(std::fmt::Error);
         }
-        //count
-        let _ = write!(f, ",{}", si_cols.last().unwrap());
+        //date,count
+        let _ = write!(
+            f,
+            ",{},{}",
+            si_cols.first().unwrap(),
+            si_cols.last().unwrap()
+        );
         Ok(())
     }
 }
 
-struct SiInsertVals<'a, S>(&'a S, &'a Vec<RingSlice>, &'a Vec<Field>);
+struct SiInsertVals<'a, S>(&'a S, &'a NaiveDate, &'a Vec<RingSlice>, &'a Vec<Field>);
 impl<'a, S: Strategy> Display for SiInsertVals<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let &Self(strategy, keys, fields) = self;
-        //默认最后一个为date列
-        for (i, key) in keys.iter().enumerate() {
-            if i == 0 {
-                let _ = write!(f, "{}", Val(key));
-            } else {
-                let _ = write!(f, ",{}", Val(key));
+        let &Self(strategy, date, keys, fields) = self;
+        for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
+            if let KeysType::Keys(_) = key {
+                if i == 0 {
+                    let _ = write!(f, "{}", Val(&keys[i]));
+                } else {
+                    let _ = write!(f, ",{}", Val(&keys[i]));
+                }
             }
         }
         let si_cols = strategy.si_cols();
@@ -523,8 +532,9 @@ impl<'a, S: Strategy> Display for SiInsertVals<'a, S> {
                 }
             }
         }
-        // count
-        let _ = f.write_str(",1");
+        //date,count
+        // 写startdate的格式都是统一按照YY-mm-dd写的
+        let _ = write!(f, ",{}-{}-{},{}", date.year(), date.month(), date.day(), 1);
         Ok(())
     }
 }

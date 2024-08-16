@@ -1,6 +1,10 @@
 use chrono::{Datelike, NaiveDate};
 use core::fmt::Write;
-use protocol::vector::{CommandType, Postfix};
+use ds::RingSlice;
+use protocol::{
+    vector::{CommandType, KeysType, Postfix},
+    Error,
+};
 use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]
@@ -97,6 +101,47 @@ impl Batch {
         &self.keys_name
     }
 
+    pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate, Error> {
+        let mut ymd = (0u16, 0u16, 0u16);
+        for (i, key_name) in self.keys_name.iter().enumerate() {
+            match key_name.as_str() {
+                "yymm" => {
+                    ymd = (
+                        keys[i]
+                            .try_str_num(0..0 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16
+                            + 2000,
+                        keys[i]
+                            .try_str_num(2..2 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                        1,
+                    );
+                    break;
+                }
+                "yymmdd" => {
+                    ymd = (
+                        keys[i]
+                            .try_str_num(0..0 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16
+                            + 2000,
+                        keys[i]
+                            .try_str_num(2..2 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                        keys[i]
+                            .try_str_num(4..4 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                    );
+                    break;
+                }
+                &_ => {
+                    continue;
+                }
+            }
+        }
+        NaiveDate::from_ymd_opt(ymd.0.into(), ymd.1.into(), ymd.2.into())
+            .ok_or(Error::RequestProtocolInvalid)
+    }
+
     // pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
     //     if month == 1 {
     //         return NaiveDate::from_ymd_opt((year - 1).into(), 12, 1).unwrap();
@@ -120,6 +165,18 @@ impl Batch {
             CommandType::VAdd | CommandType::VDel => self.keys().len(),
             _ => panic!("not sup {cmd:?}"),
         }
+    }
+
+    pub(crate) fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_> {
+        Box::new(
+            self.keys_name
+                .iter()
+                .map(|key_name| match key_name.as_str() {
+                    "yymm" | "yymmdd" => KeysType::Time,
+                    // "yyyymm" | "yyyymmdd" => None,
+                    &_ => KeysType::Keys(key_name),
+                }),
+        )
     }
 }
 
