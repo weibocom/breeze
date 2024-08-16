@@ -5,24 +5,9 @@ use super::kvtime::KVTime;
 use ds::RingSlice;
 
 use protocol::kv::Strategy;
+use protocol::vector::Postfix;
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
-
-#[derive(Debug, Clone)]
-pub enum Postfix {
-    YYMM,
-    YYMMDD,
-    INDEX,
-}
-
-impl Into<Postfix> for &str {
-    fn into(self) -> Postfix {
-        match self.to_lowercase().as_str() {
-            "yymm" => Postfix::YYMM,
-            _ => Postfix::YYMMDD,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub enum Strategist {

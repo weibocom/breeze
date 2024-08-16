@@ -106,9 +106,9 @@ where
                 };
                 Ok((round == si_items.len() as u16, limit, date))
             }
-            //相比vrange多了一个日期key
             CommandType::VAdd | CommandType::VDel => {
-                Ok((true, 0, NaiveDate::from_ymd_opt(1, 1, 1).unwrap()))
+                let date = self.strategist.get_date(&vcmd.keys)?;
+                Ok((true, 0, date))
             }
             _ => panic!("not sup {:?}", vcmd.cmd),
         }
@@ -151,28 +151,29 @@ where
         req.attachment_mut()
             .get_or_insert(VectorAttach::new(operation).to_attach());
 
-        // TODO 这里需要根据operation选择不同的shard fishermen
-
         //分别代表请求的轮次和每轮重试次数
         let (round, runs) = (req.attach().round, req.ctx_mut().runs);
         //runs == 0 表示第一轮第一次请求
         let shard = if runs == 0 || req.attach().rsp_ok {
             let shard = if runs == 0 {
                 //请求si表
-                assert_eq!(req.attach().retrieve_attach().left_count, 0);
                 assert_eq!(*req.context_mut(), 0);
                 let vcmd = parse_vector_detail(****req, req.flag())?;
                 //上行请求不需要初始化leftcount
-                if req.operation().is_retrival() {
+                let date = if req.operation().is_retrival() {
                     let limit = vcmd.limit();
                     assert!(limit > 0, "{limit}");
                     //需要在buildsql之前设置
+                    assert_eq!(req.attach().retrieve_attach().left_count, 0);
                     req.attach_mut()
                         .retrieve_attach_mut()
                         .with_left_count(limit as u16);
-                }
-
-                let si_sql = SiSqlBuilder::new(&vcmd, req.hash(), &self.strategist)?;
+                    //下行请求不需要date
+                    NaiveDate::default()
+                } else {
+                    self.strategist.get_date(&vcmd.keys)?
+                };
+                let si_sql = SiSqlBuilder::new(&vcmd, req.hash(), date, &self.strategist)?;
                 let cmd = MysqlBuilder::build_packets_for_vector(si_sql)?;
                 req.reshape(MemGuard::from_vec(cmd));
 
