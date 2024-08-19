@@ -180,7 +180,7 @@ where
                 let si_shard_idx = self.strategist.si_distribution().index(req.hash());
                 req.ctx_mut().shard_idx = si_shard_idx as u16;
                 req.attach_mut().vcmd = vcmd;
-                req.set_last(false);
+                req.set_next_round(true);
                 &self.si_shard[si_shard_idx]
             } else {
                 let (last, limit, date) = self.sql_info(req, round)?;
@@ -194,7 +194,7 @@ where
                 let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
 
                 if last {
-                    req.set_last(true);
+                    req.set_next_round(false);
                 }
                 req.reshape(MemGuard::from_vec(cmd));
                 //获取shard
@@ -209,7 +209,7 @@ where
             req.attach_mut().rsp_ok = false;
             req.attach_mut().round += 1;
             req.ctx_mut().runs = 0;
-            req.set_fitst_try();
+            // req.set_fitst_try();
             shard
         } else {
             if round - 1 == 0 {

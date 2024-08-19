@@ -189,7 +189,7 @@ impl Protocol for Vector {
 
     // 将中间响应放到attachment中，方便后续继续查询
     // 先收集si信息，再收集body
-    // 返回值：是否为最后一轮
+    // 返回值：是否继续下一轮
     #[inline]
     fn update_attachment(&self, attachment: &mut Attachment, response: &mut Command) -> bool {
         assert!(response.ok());
@@ -219,16 +219,16 @@ impl Protocol for Vector {
                             // let header = &response.header;
                             attach.attach_body(body_data, header.rows, header.columns);
                         }
-                        attach.left_count == 0
+                        attach.left_count != 0
                     }
                     // 按si解析响应: 未成功获取有效si信息或者解析si失败，并终止后续请求
-                    false => response.count() == 0 || !attach.attach_si(response),
+                    false => response.count() != 0 && attach.attach_si(response),
                 }
             }
             AttachType::Store => {
                 let store_attach = vec_attach.store_attach_mut();
                 store_attach.incr_affected_rows(response.count() as u16);
-                false
+                true
             }
             _ => {
                 panic!("malformed attach");
