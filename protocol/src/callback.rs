@@ -35,11 +35,12 @@ pub struct CallbackContext {
     done: AtomicBool,                    // 当前模式请求是否完成
     inited: AtomicBool,                  // response是否已经初始化
     pub(crate) try_next: bool,           // 请求失败后，topo层面是否允许重试
+    pub(crate) next_round: bool, // 请求成功后，topo层面是否允许继续下一轮请求，目前只有vector使用
     pub(crate) retry_on_rsp_notok: bool, // 有响应且响应不ok时，协议层面是否允许重试
-    pub(crate) write_back: bool,         // 请求结束后，是否需要回写。
-    pub(crate) max_tries: u8,            // 最大重试次数
-    first: bool,                         // 当前请求是否是所有子请求的第一个
-    last: bool,                          // 当前请求是否是所有子请求的最后一个
+    pub(crate) write_back: bool, // 请求结束后，是否需要回写。
+    pub(crate) max_tries: u8,    // 最大重试次数
+    first: bool,                 // 当前请求是否是所有子请求的第一个
+    last: bool,                  // 当前请求是否是所有子请求的最后一个
     tries: AtomicU8,
     request: HashedCommand,
     response: MaybeUninit<Command>,
@@ -74,6 +75,7 @@ impl CallbackContext {
             inited: AtomicBool::new(false),
             async_mode: false,
             try_next: false,
+            next_round: false,
             retry_on_rsp_notok,
             write_back: false,
             max_tries,
@@ -122,17 +124,17 @@ impl CallbackContext {
     #[inline]
     pub fn on_complete<P: crate::Proto>(&mut self, parser: &P, resp: Command) {
         log::debug!("on-complete:{} resp:{}", self, resp);
-        // 异步请求不关注response。
-        if !self.async_mode {
-            debug_assert!(!self.complete(), "{:?}", self);
-            if self.attachment.is_some() {
-                // vector聚合场景
-                self.on_complete_aggregate(parser, resp);
-            } else {
+        if self.attachment.is_none() {
+            // 异步请求不关注response。
+            if !self.async_mode {
+                debug_assert!(!self.complete(), "{:?}", self);
                 self.swap_response(resp);
             }
+            self.on_done();
+        } else {
+            // vector聚合场景
+            self.on_complete_aggregate(parser, resp);
         }
-        self.on_done();
     }
 
     #[inline]
@@ -141,24 +143,24 @@ impl CallbackContext {
         //   1. 第一轮获取si；若si获取失败（例如si为空），则终止请求
         //   2. 后续轮次更新attachment，并判断是否是最后一轮。
         // 返回失败，则终止请求。
-        if resp.ok() {
-            // 更新attachment
+        let next_round = if resp.ok() {
             let attach = self.attachment.as_mut().expect("attach");
-            let last = parser.update_attachment(attach, &mut resp);
-            if last {
-                self.set_last(true);
-            }
             // 更新attachment不成功，或者响应数足够,终止请求
+            parser.update_attachment(attach, &mut resp)
         } else {
-            self.set_last(true);
-        }
-        if self.last() {
+            false
+        };
+
+        self.quota.take().map(|q| q.incr(self.start_at().elapsed()));
+
+        //没有下一轮时，走以前的重试逻辑：有响应不会重试了
+        if !next_round || !self.next_round {
             // 中间轮次的resp没有被使用，可忽略;
+            self.next_round = false;
             self.swap_response(resp);
+            self.mark_done_and_wake();
         } else {
-            // 重置下一轮访问需要的变量
-            self.try_next = true; // 可以进入下一轮访问
-            self.set_fitst_try();
+            self.goon()
         }
     }
 
@@ -211,9 +213,10 @@ impl CallbackContext {
             return self.goon();
         }
 
-        // 改到这里，不需要额外判断逻辑了
-        self.set_last(true);
+        self.mark_done_and_wake();
+    }
 
+    fn mark_done_and_wake(&mut self) {
         //markdone后，req标记为已完成，那么CallbackContext和CopyBidirectional都有可能被释放
         //CopyBidirectional会提前释放，所以需要提前clone一份
         //CallbackContext会提前释放，则需要在此clone到栈上
@@ -341,18 +344,17 @@ impl CallbackContext {
         &mut self.attachment
     }
     #[inline]
-    pub fn set_last(&mut self, last: bool) {
-        // todo: 可优化为依据请求数或者响应数量判断可以设置last为true
-        self.last = last;
+    pub fn set_next_round(&mut self, next_round: bool) {
+        self.next_round = next_round;
     }
     #[inline]
     pub fn set_max_tries(&mut self, max_tries: u8) {
         self.max_tries = max_tries;
     }
-    #[inline]
-    pub fn set_fitst_try(&mut self) {
-        self.tries = 0.into();
-    }
+    // #[inline]
+    // pub fn reset_tries(&mut self) {
+    //     self.tries.store(0, Release);
+    // }
 
     #[inline]
     pub fn with_next_action(&mut self, next_action: u8) {

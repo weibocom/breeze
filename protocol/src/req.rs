@@ -73,6 +73,6 @@ pub trait Request:
     // 获取附加信息
     fn attachment(&self) -> Option<&Attachment>;
     fn set_max_tries(&mut self, max_tries: u8);
-    fn set_fitst_try(&mut self);
-    fn set_last(&mut self, last: bool);
+    // fn set_fitst_try(&mut self);
+    fn set_next_round(&mut self, next_round: bool);
 }
