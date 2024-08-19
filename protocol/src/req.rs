@@ -75,4 +75,5 @@ pub trait Request:
     fn set_max_tries(&mut self, max_tries: u8);
     // fn set_fitst_try(&mut self);
     fn set_next_round(&mut self, next_round: bool);
+    fn get_next_round(&mut self) -> bool;
 }

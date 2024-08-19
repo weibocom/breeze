@@ -183,6 +183,7 @@ where
                 req.set_next_round(true);
                 &self.si_shard[si_shard_idx]
             } else {
+                assert!(req.get_next_round());
                 let (last, limit, date) = self.sql_info(req, round)?;
                 let vector_builder = SqlBuilder::new(
                     &req.attach().vcmd,
