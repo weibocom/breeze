@@ -284,6 +284,8 @@ where
             req.try_next(try_next);
             endpoint.send(req)
         } else {
+            let ctx = req.ctx_mut();
+            ctx.runs += 1;
             shard.master().send(req);
         }
     }

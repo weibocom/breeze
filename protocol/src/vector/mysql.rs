@@ -534,7 +534,14 @@ impl<'a, S: Strategy> Display for SiInsertVals<'a, S> {
         }
         //date,count
         // 写startdate的格式都是统一按照YY-mm-dd写的
-        let _ = write!(f, ",{}-{}-{},{}", date.year(), date.month(), date.day(), 1);
+        let _ = write!(
+            f,
+            ",'{}-{}-{}',{}",
+            date.year(),
+            date.month(),
+            date.day(),
+            1
+        );
         Ok(())
     }
 }
