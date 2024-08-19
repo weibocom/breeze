@@ -78,6 +78,10 @@ impl crate::Request for Request {
     fn set_next_round(&mut self, next_round: bool) {
         self.ctx().set_next_round(next_round);
     }
+
+    fn get_next_round(&mut self) -> bool {
+        self.ctx().get_next_round()
+    }
 }
 impl Request {
     #[inline]

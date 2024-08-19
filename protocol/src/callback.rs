@@ -360,6 +360,10 @@ impl CallbackContext {
     pub fn with_next_action(&mut self, next_action: u8) {
         self.next_action = next_action;
     }
+
+    pub(crate) fn get_next_round(&self) -> bool {
+        self.next_round
+    }
 }
 
 impl Drop for CallbackContext {
