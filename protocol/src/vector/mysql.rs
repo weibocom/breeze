@@ -418,14 +418,16 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
             // 2.1. 更新si：update $db$.$tb$ set count = greatest(0,cast(count as signed) - 1) where uid = ? and object_type = ? and start_date = ?
             // 2.2. 删除timeline：delete from $db$.$tb$ where uid=? and object_id=?
             // 备注：有些场景只更新si，有些场景只更新timeline，需要业务修改时考虑。
-            // 1.3. mesh cmd: vdel $uid,$date where uid = $uid object_type = $obj_type object_id = $obj_id
+            // 1.3. mesh cmd: vdel $uid,$date where object_type = $obj_type object_id = $obj_id
             CommandType::VDel => {
-                let _ = write!(
+                //对si表的更新插入至少需要keys + count + counttype 这些字段，下面会兜底校验
+                write!(
                     buf,
                     "update {} set count = greatest(0,cast(count as signed) - 1) where {}",
                     SiTable(self.strategy, self.hash),
                     SiKeysAndDelConds(self.strategy, &self.vcmd, &self.date),
-                );
+                )
+                .map_err(|_| Error::RequestProtocolInvalid)?;
             }
             _ => {
                 //校验应该在parser_req出
@@ -571,21 +573,27 @@ impl<'a, S: Strategy> Display for SiKeysAndDelConds<'a, S> {
                 }
             }
         }
-        let cols = strategy.si_cols();
+        let mut has_count_type = false;
+        let si_cols = strategy.si_cols();
         for w in wheres {
             //条件中和si相同的列写入条件
-            for col in cols {
+            for col in si_cols {
                 if w.field.equal(col.as_bytes()) {
                     let _ = write!(f, " and {}", ConditionDisplay(w));
+                    has_count_type = true;
                     break;
                 }
             }
+        }
+        //必须提供count_type
+        if si_cols.len() > 2 && !has_count_type {
+            return Err(std::fmt::Error);
         }
         //date
         let _ = write!(
             f,
             " and {}='{}-{}-{}'",
-            cols.first().unwrap(),
+            si_cols.first().unwrap(),
             date.year(),
             date.month(),
             date.day(),
