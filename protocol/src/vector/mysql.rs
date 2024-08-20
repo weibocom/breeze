@@ -415,6 +415,18 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
                     count,
                 ).map_err(|_| Error::RequestProtocolInvalid)?;
             }
+            // 2.1. 更新si：update $db$.$tb$ set count = greatest(0,cast(count as signed) - 1) where uid = ? and object_type = ? and start_date = ?
+            // 2.2. 删除timeline：delete from $db$.$tb$ where uid=? and object_id=?
+            // 备注：有些场景只更新si，有些场景只更新timeline，需要业务修改时考虑。
+            // 1.3. mesh cmd: vdel $uid,$date where uid = $uid object_type = $obj_type object_id = $obj_id
+            CommandType::VDel => {
+                let _ = write!(
+                    buf,
+                    "update {} set count = greatest(0,cast(count as signed) - 1) where {}",
+                    SiTable(self.strategy, self.hash),
+                    SiKeysAndDelConds(self.strategy, &self.vcmd, &self.date),
+                );
+            }
             _ => {
                 //校验应该在parser_req出
                 panic!("not support cmd_type:{:?}", self.vcmd.cmd);
@@ -541,6 +553,42 @@ impl<'a, S: Strategy> Display for SiInsertVals<'a, S> {
             date.month(),
             date.day(),
             1
+        );
+        Ok(())
+    }
+}
+
+struct SiKeysAndDelConds<'a, S>(&'a S, &'a VectorCmd, &'a NaiveDate);
+impl<'a, S: Strategy> Display for SiKeysAndDelConds<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &Self(strategy, VectorCmd { keys, wheres, .. }, date) = self;
+        for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
+            if let KeysType::Keys(key) = key {
+                if i == 0 {
+                    let _ = write!(f, "`{}`={}", key, Val(&keys[i]));
+                } else {
+                    let _ = write!(f, " and `{}`={}", key, Val(&keys[i]));
+                }
+            }
+        }
+        let cols = strategy.si_cols();
+        for w in wheres {
+            //条件中和si相同的列写入条件
+            for col in cols {
+                if w.field.equal(col.as_bytes()) {
+                    let _ = write!(f, " and {}", ConditionDisplay(w));
+                    break;
+                }
+            }
+        }
+        //date
+        let _ = write!(
+            f,
+            " and {}='{}-{}-{}'",
+            cols.first().unwrap(),
+            date.year(),
+            date.month(),
+            date.day(),
         );
         Ok(())
     }
