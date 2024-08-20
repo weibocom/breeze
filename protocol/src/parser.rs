@@ -148,10 +148,10 @@ pub trait RequestProcessor {
     fn process(&mut self, req: HashedCommand, last: bool);
 }
 
+// TODO Command实质就是response，考虑直接用response？ fishermen
 pub struct Command {
     ok: bool,
-    // header 只对部分请求有效，改为option
-    pub(crate) header: Option<ResponseHeader>,
+    pub(crate) header: ResponseHeader,
     count: u32,
     cmd: MemGuard,
 }
@@ -180,7 +180,7 @@ impl Command {
         let count = header.rows as u32;
         Self {
             ok,
-            header: Some(header),
+            header,
             count,
             cmd: body,
         }

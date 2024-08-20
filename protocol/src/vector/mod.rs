@@ -10,6 +10,7 @@ mod reqpacket;
 mod rsppacket;
 
 use std::fmt::Write;
+use std::mem;
 
 use crate::{
     Attachment, Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol,
@@ -153,11 +154,12 @@ impl Protocol for Vector {
                     // 1. 只返回影响的行数
                     // 2. 一行或多行数据
                     // 3. 结果为空
-                    if let Some(ref header) = response.header {
-                        if header.rows > 0 {
-                            w.write(header.header.as_ref())?;
-                            w.write(format!("*{}\r\n", header.rows * header.columns).as_bytes())?;
-                        }
+                    if response.header.rows > 0 {
+                        w.write(response.header.header.as_ref())?;
+                        w.write(
+                            format!("*{}\r\n", response.header.rows * response.header.columns)
+                                .as_bytes(),
+                        )?;
                     }
                     w.write_slice(response, 0)?; // value
                 }
@@ -199,25 +201,25 @@ impl Protocol for Vector {
 
         match vec_attach.attch_type() {
             AttachType::Retrieve => {
-                assert!(response.header.is_some(), "rsp:{}", response);
                 let attach = vec_attach.retrieve_attach_mut();
-
-                let body_data = response.data().0.to_vec();
-                let header = response.header.as_mut().expect("rsp header");
                 if attach.is_empty() {
-                    // TODO 简化swap操作，注意功能验证 fishermen
-                    // let mut header_data = Vec::new();
-                    // let header = &mut response.header;
-                    // mem::swap(&mut header_data, &mut header.header);
-                    attach.swap_header_data(&mut header.header);
+                    // TODO 先打通，此处的内存操作需要考虑优化 fishermen
+                    let mut header_data = Vec::new();
+                    let header = &mut response.header;
+                    mem::swap(&mut header_data, &mut header.header);
+                    attach.attach_header(header_data);
                 }
 
                 // TODO 先打通，此处的内存操作需要考虑优化 fishermen
                 match attach.has_si() {
                     true => {
-                        if header.rows > 0 {
-                            // let header = &response.header;
-                            attach.attach_body(body_data, header.rows, header.columns);
+                        if response.header.rows > 0 {
+                            let header = &response.header;
+                            attach.attach_body(
+                                response.data().0.to_vec(),
+                                header.rows,
+                                header.columns,
+                            );
                         }
                         attach.left_count != 0
                     }
