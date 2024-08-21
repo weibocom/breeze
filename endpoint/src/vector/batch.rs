@@ -101,45 +101,56 @@ impl Batch {
         &self.keys_name
     }
 
-    pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate, Error> {
-        let mut ymd = (0u16, 0u16, 0u16);
-        for (i, key_name) in self.keys_name.iter().enumerate() {
-            match key_name.as_str() {
-                "yymm" => {
-                    ymd = (
-                        keys[i]
-                            .try_str_num(0..0 + 2)
-                            .ok_or(Error::RequestProtocolInvalid)? as u16
-                            + 2000,
-                        keys[i]
-                            .try_str_num(2..2 + 2)
-                            .ok_or(Error::RequestProtocolInvalid)? as u16,
-                        1,
-                    );
-                    break;
+    pub fn get_date(&self, cmd: CommandType, keys: &[RingSlice]) -> Result<NaiveDate, Error> {
+        match cmd {
+            CommandType::VRange | CommandType::VGet => Ok(NaiveDate::default()),
+            //相比vrange多了一个日期key
+            _ => {
+                let mut ymd = (0u16, 0u16, 0u16);
+                for (i, key_name) in self.keys_name.iter().enumerate() {
+                    match key_name.as_str() {
+                        "yymm" => {
+                            ymd = (
+                                keys[i]
+                                    .try_str_num(0..0 + 2)
+                                    .ok_or(Error::RequestProtocolInvalid)?
+                                    as u16
+                                    + 2000,
+                                keys[i]
+                                    .try_str_num(2..2 + 2)
+                                    .ok_or(Error::RequestProtocolInvalid)?
+                                    as u16,
+                                1,
+                            );
+                            break;
+                        }
+                        "yymmdd" => {
+                            ymd = (
+                                keys[i]
+                                    .try_str_num(0..0 + 2)
+                                    .ok_or(Error::RequestProtocolInvalid)?
+                                    as u16
+                                    + 2000,
+                                keys[i]
+                                    .try_str_num(2..2 + 2)
+                                    .ok_or(Error::RequestProtocolInvalid)?
+                                    as u16,
+                                keys[i]
+                                    .try_str_num(4..4 + 2)
+                                    .ok_or(Error::RequestProtocolInvalid)?
+                                    as u16,
+                            );
+                            break;
+                        }
+                        &_ => {
+                            continue;
+                        }
+                    }
                 }
-                "yymmdd" => {
-                    ymd = (
-                        keys[i]
-                            .try_str_num(0..0 + 2)
-                            .ok_or(Error::RequestProtocolInvalid)? as u16
-                            + 2000,
-                        keys[i]
-                            .try_str_num(2..2 + 2)
-                            .ok_or(Error::RequestProtocolInvalid)? as u16,
-                        keys[i]
-                            .try_str_num(4..4 + 2)
-                            .ok_or(Error::RequestProtocolInvalid)? as u16,
-                    );
-                    break;
-                }
-                &_ => {
-                    continue;
-                }
+                NaiveDate::from_ymd_opt(ymd.0.into(), ymd.1.into(), ymd.2.into())
+                    .ok_or(Error::RequestProtocolInvalid)
             }
         }
-        NaiveDate::from_ymd_opt(ymd.0.into(), ymd.1.into(), ymd.2.into())
-            .ok_or(Error::RequestProtocolInvalid)
     }
 
     // pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
@@ -160,7 +171,7 @@ impl Batch {
 
     pub(crate) fn keys_len(&self, cmd: CommandType) -> usize {
         match cmd {
-            CommandType::VRange => self.keys().len() - 1,
+            CommandType::VRange | CommandType::VGet => self.keys().len() - 1,
             //相比vrange多了一个日期key
             CommandType::VAdd | CommandType::VDel => self.keys().len(),
             _ => panic!("not sup {cmd:?}"),
