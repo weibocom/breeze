@@ -147,10 +147,6 @@ where
         Ok(shard)
     }
     fn more_get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
-        let operation = req.operation();
-        req.attachment_mut()
-            .get_or_insert(VectorAttach::new(operation).to_attach());
-
         //分别代表请求的轮次和每轮重试次数
         let (round, runs) = (req.attach().round, req.ctx_mut().runs);
         //runs == 0 表示第一轮第一次请求
@@ -159,15 +155,14 @@ where
                 //请求si表
                 assert_eq!(*req.context_mut(), 0);
                 let vcmd = parse_vector_detail(****req, req.flag())?;
+
+                assert_eq!(req.attachment(), None);
+                let operation = req.operation();
+                let _ = req
+                    .attachment_mut()
+                    .insert(VectorAttach::new(operation, vcmd.limit() as u16).to_attach());
                 //上行请求不需要初始化leftcount
                 let date = if req.operation().is_retrival() {
-                    let limit = vcmd.limit();
-                    assert!(limit > 0, "{limit}");
-                    //需要在buildsql之前设置
-                    assert_eq!(req.attach().retrieve_attach().left_count, 0);
-                    req.attach_mut()
-                        .retrieve_attach_mut()
-                        .with_left_count(limit as u16);
                     //下行请求不需要date
                     NaiveDate::default()
                 } else {
