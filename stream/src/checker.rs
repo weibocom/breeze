@@ -121,6 +121,10 @@ impl<P, Req> BackendChecker<P, Req> {
                 Error::ChanReadClosed => {
                     debug_assert!(!self.finish.get(), "channel closed but not finish");
                 }
+                Error::TxBufFull => {
+                    let mut buf_full = path_addr.num("buf_full");
+                    buf_full += 1;
+                }
                 Error::UnexpectedData | _ => {
                     let mut unexpected_resp = Path::base().num("unexpected_resp");
                     unexpected_resp += 1;

@@ -34,6 +34,9 @@ pub trait BufWriter {
         self.write_all(buf0)?;
         self.write_all(buf1)
     }
+    fn unread_len(&self) -> usize {
+        panic!("not impl")
+    }
 }
 
 impl BufWriter for Vec<u8> {
