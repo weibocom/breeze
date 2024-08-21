@@ -93,10 +93,10 @@ impl Strategist {
         }
     }
     #[inline]
-    pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate> {
+    pub fn get_date(&self, cmd: CommandType, keys: &[RingSlice]) -> Result<NaiveDate> {
         match self {
             Strategist::VectorTime(inner) => inner.get_date(keys),
-            Strategist::Batch(inner) => inner.get_date(keys),
+            Strategist::Batch(inner) => inner.get_date(cmd, keys),
         }
     }
     // 请求成功后，是否有更多的数据需要请求

@@ -107,7 +107,7 @@ where
                 Ok((round == si_items.len() as u16, limit, date))
             }
             CommandType::VAdd | CommandType::VDel => {
-                let date = self.strategist.get_date(&vcmd.keys)?;
+                let date = self.strategist.get_date(vcmd.cmd, &vcmd.keys)?;
                 Ok((true, 0, date))
             }
             _ => panic!("not sup {:?}", vcmd.cmd),
@@ -118,7 +118,7 @@ where
         let (year, shard_idx) = if req.ctx_mut().runs == 0 {
             let vcmd = parse_vector_detail(****req, req.flag())?;
             //定位年库
-            let date = self.strategist.get_date(&vcmd.keys)?;
+            let date = self.strategist.get_date(vcmd.cmd, &vcmd.keys)?;
             let year = date.year() as u16;
 
             let shard_idx = self.shard_idx(req.hash());
@@ -162,12 +162,7 @@ where
                     .attachment_mut()
                     .insert(VectorAttach::new(operation, vcmd.limit() as u16).to_attach());
                 //上行请求不需要初始化leftcount
-                let date = if req.operation().is_retrival() {
-                    //下行请求不需要date
-                    NaiveDate::default()
-                } else {
-                    self.strategist.get_date(&vcmd.keys)?
-                };
+                let date = self.strategist.get_date(vcmd.cmd, &vcmd.keys)?;
                 let si_sql = SiSqlBuilder::new(&vcmd, req.hash(), date, &self.strategist)?;
                 let cmd = MysqlBuilder::build_packets_for_vector(si_sql)?;
                 req.reshape(MemGuard::from_vec(cmd));
