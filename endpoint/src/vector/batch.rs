@@ -3,7 +3,7 @@ use core::fmt::Write;
 use ds::RingSlice;
 use protocol::{
     vector::{CommandType, KeysType, Postfix},
-    Error,
+    Error, DATE_YYMM, DATE_YYMMDD,
 };
 use sharding::{distribution::DBRange, hash::Hasher};
 
@@ -109,7 +109,7 @@ impl Batch {
                 let mut ymd = (0u16, 0u16, 0u16);
                 for (i, key_name) in self.keys_name.iter().enumerate() {
                     match key_name.as_str() {
-                        "yymm" => {
+                        DATE_YYMM => {
                             ymd = (
                                 keys[i]
                                     .try_str_num(0..0 + 2)
@@ -124,7 +124,7 @@ impl Batch {
                             );
                             break;
                         }
-                        "yymmdd" => {
+                        DATE_YYMMDD => {
                             ymd = (
                                 keys[i]
                                     .try_str_num(0..0 + 2)
@@ -174,8 +174,7 @@ impl Batch {
             self.keys_name
                 .iter()
                 .map(|key_name| match key_name.as_str() {
-                    "yymm" | "yymmdd" => KeysType::Time,
-                    // "yyyymm" | "yyyymmdd" => None,
+                    DATE_YYMM | DATE_YYMMDD => KeysType::Time,
                     &_ => KeysType::Keys(key_name),
                 }),
         )

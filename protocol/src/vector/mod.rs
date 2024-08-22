@@ -444,17 +444,19 @@ impl FieldVal {
     }
 }
 
+pub const DATE_YYMM: &str = "yymm";
+pub const DATE_YYMMDD: &str = "yymmdd";
+
 #[derive(Debug, Clone)]
 pub enum Postfix {
     YYMM,
     YYMMDD,
-    INDEX,
 }
 
 impl Into<Postfix> for &str {
     fn into(self) -> Postfix {
         match self.to_lowercase().as_str() {
-            "yymm" => Postfix::YYMM,
+            DATE_YYMM => Postfix::YYMM,
             _ => Postfix::YYMMDD,
         }
     }

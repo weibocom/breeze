@@ -4,8 +4,8 @@ use chrono::NaiveDate;
 use core::fmt::Write;
 use ds::RingSlice;
 use protocol::vector::Postfix;
-use protocol::Error;
 use protocol::{kv::Strategy, vector::KeysType};
+use protocol::{Error, DATE_YYMM, DATE_YYMMDD};
 use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]
@@ -41,7 +41,7 @@ impl VectorTime {
         let mut ymd = (0u16, 0u16, 0u16);
         for (i, key_name) in self.keys_name.iter().enumerate() {
             match key_name.as_str() {
-                "yymm" => {
+                DATE_YYMM => {
                     ymd = (
                         keys[i]
                             .try_str_num(0..0 + 2)
@@ -54,7 +54,7 @@ impl VectorTime {
                     );
                     break;
                 }
-                "yymmdd" => {
+                DATE_YYMMDD => {
                     ymd = (
                         keys[i]
                             .try_str_num(0..0 + 2)
@@ -106,8 +106,7 @@ impl VectorTime {
             self.keys_name
                 .iter()
                 .map(|key_name| match key_name.as_str() {
-                    "yymm" | "yymmdd" => KeysType::Time,
-                    // "yyyymm" | "yyyymmdd" => None,
+                    DATE_YYMM | DATE_YYMMDD => KeysType::Time,
                     &_ => KeysType::Keys(key_name),
                 }),
         )
