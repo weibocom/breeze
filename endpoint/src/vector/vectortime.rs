@@ -37,57 +37,43 @@ impl VectorTime {
         <KVTime as Strategy>::hasher(&self.kvtime)
     }
 
+    //策略处已作校验
     pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate, Error> {
-        let mut ymd = (0u16, 0u16, 0u16);
-        for (i, key_name) in self.keys_name.iter().enumerate() {
-            match key_name.as_str() {
-                DATE_YYMM => {
-                    ymd = (
-                        keys[i]
-                            .try_str_num(0..0 + 2)
-                            .ok_or(Error::RequestProtocolInvalid)? as u16
-                            + 2000,
-                        keys[i]
-                            .try_str_num(2..2 + 2)
-                            .ok_or(Error::RequestProtocolInvalid)? as u16,
-                        1,
-                    );
-                    break;
-                }
-                DATE_YYMMDD => {
-                    ymd = (
-                        keys[i]
-                            .try_str_num(0..0 + 2)
-                            .ok_or(Error::RequestProtocolInvalid)? as u16
-                            + 2000,
-                        keys[i]
-                            .try_str_num(2..2 + 2)
-                            .ok_or(Error::RequestProtocolInvalid)? as u16,
-                        keys[i]
-                            .try_str_num(4..4 + 2)
-                            .ok_or(Error::RequestProtocolInvalid)? as u16,
-                    );
-                    break;
-                }
-                // "yyyymm" => {
-                //     ymd = (
-                //         keys[i].try_str_num(0..0+4)? as u16,
-                //         keys[i].try_str_num(4..4+2)? as u16,
-                //         1,
-                //     )
-                // }
-                // "yyyymmdd" => {
-                //     ymd = (
-                //         keys[i].try_str_num(0..0+4)? as u16,
-                //         keys[i].try_str_num(4..4+2)? as u16,
-                //         keys[i].try_str_num(6..6+2)? as u16,
-                //     )
-                // }
-                &_ => {
-                    continue;
-                }
-            }
-        }
+        let date = keys.last().unwrap();
+        let ymd = match self.keys_name.last().unwrap().as_str() {
+            DATE_YYMM => (
+                date.try_str_num(0..0 + 2)
+                    .ok_or(Error::RequestProtocolInvalid)? as u16
+                    + 2000,
+                date.try_str_num(2..2 + 2)
+                    .ok_or(Error::RequestProtocolInvalid)? as u16,
+                1,
+            ),
+            DATE_YYMMDD => (
+                date.try_str_num(0..0 + 2)
+                    .ok_or(Error::RequestProtocolInvalid)? as u16
+                    + 2000,
+                date.try_str_num(2..2 + 2)
+                    .ok_or(Error::RequestProtocolInvalid)? as u16,
+                date.try_str_num(4..4 + 2)
+                    .ok_or(Error::RequestProtocolInvalid)? as u16,
+            ),
+            _ => (0, 0, 0),
+            // "yyyymm" => {
+            //     ymd = (
+            //         date.try_str_num(0..0+4)? as u16,
+            //         date.try_str_num(4..4+2)? as u16,
+            //         1,
+            //     )
+            // }
+            // "yyyymmdd" => {
+            //     ymd = (
+            //         date.try_str_num(0..0+4)? as u16,
+            //         date.try_str_num(4..4+2)? as u16,
+            //         date.try_str_num(6..6+2)? as u16,
+            //     )
+            // }
+        };
         NaiveDate::from_ymd_opt(ymd.0.into(), ymd.1.into(), ymd.2.into())
             .ok_or(Error::RequestProtocolInvalid)
     }

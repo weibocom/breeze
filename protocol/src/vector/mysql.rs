@@ -227,17 +227,13 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
         strategy: &'a S,
         limit: u64,
     ) -> Result<Self> {
-        if vcmd.keys.len() != strategy.keys().len() {
-            Err(Error::RequestProtocolInvalid)
-        } else {
-            Ok(Self {
-                vcmd,
-                hash,
-                date,
-                strategy,
-                limit,
-            })
-        }
+        Ok(Self {
+            vcmd,
+            hash,
+            date,
+            strategy,
+            limit,
+        })
     }
 }
 

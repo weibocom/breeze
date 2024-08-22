@@ -106,47 +106,27 @@ impl Batch {
             CommandType::VRange | CommandType::VGet => Ok(NaiveDate::default()),
             //相比vrange多了一个日期key
             _ => {
-                let mut ymd = (0u16, 0u16, 0u16);
-                for (i, key_name) in self.keys_name.iter().enumerate() {
-                    match key_name.as_str() {
-                        DATE_YYMM => {
-                            ymd = (
-                                keys[i]
-                                    .try_str_num(0..0 + 2)
-                                    .ok_or(Error::RequestProtocolInvalid)?
-                                    as u16
-                                    + 2000,
-                                keys[i]
-                                    .try_str_num(2..2 + 2)
-                                    .ok_or(Error::RequestProtocolInvalid)?
-                                    as u16,
-                                1,
-                            );
-                            break;
-                        }
-                        DATE_YYMMDD => {
-                            ymd = (
-                                keys[i]
-                                    .try_str_num(0..0 + 2)
-                                    .ok_or(Error::RequestProtocolInvalid)?
-                                    as u16
-                                    + 2000,
-                                keys[i]
-                                    .try_str_num(2..2 + 2)
-                                    .ok_or(Error::RequestProtocolInvalid)?
-                                    as u16,
-                                keys[i]
-                                    .try_str_num(4..4 + 2)
-                                    .ok_or(Error::RequestProtocolInvalid)?
-                                    as u16,
-                            );
-                            break;
-                        }
-                        &_ => {
-                            continue;
-                        }
-                    }
-                }
+                let date = keys.last().unwrap();
+                let ymd = match self.keys_name.last().unwrap().as_str() {
+                    DATE_YYMM => (
+                        date.try_str_num(0..0 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16
+                            + 2000,
+                        date.try_str_num(2..2 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                        1,
+                    ),
+                    DATE_YYMMDD => (
+                        date.try_str_num(0..0 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16
+                            + 2000,
+                        date.try_str_num(2..2 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                        date.try_str_num(4..4 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                    ),
+                    _ => (0, 0, 0),
+                };
                 NaiveDate::from_ymd_opt(ymd.0.into(), ymd.1.into(), ymd.2.into())
                     .ok_or(Error::RequestProtocolInvalid)
             }
@@ -180,6 +160,7 @@ impl Batch {
         )
     }
 
+    //校验动态信息，后续有重复校验的后面延迟校验
     //上行多带一个日期key，日期key固定在最后
     pub(crate) fn check_vector_cmd(
         &self,
