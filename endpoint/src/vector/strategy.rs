@@ -41,16 +41,18 @@ impl Strategist {
             "aggregation" => {
                 //至少需要date和count两个字段名，keys至少需要id+time
                 if ns.basic.si_cols.len() < 2 || ns.basic.keys.len() < 2 {
-                    log::warn!("len si_cols < 2 or len keys < 1");
+                    log::warn!("len si_cols < 2 or len keys < 2");
                     return None;
                 }
+                //最后一个key需要是日期
+                let _: Postfix = ns.basic.keys.last().unwrap().as_str().try_into().ok()?;
                 Self::Batch(Batch::new_with_db(
                     ns.basic.db_name.clone(),
                     ns.basic.table_name.clone(),
                     ns.basic.db_count,
                     //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
                     ns.backends.iter().next().unwrap().1.len() as u32,
-                    ns.basic.table_postfix.as_str().into(),
+                    ns.basic.table_postfix.as_str().try_into().ok()?,
                     ns.basic.keys.clone(),
                     ns.basic.si_cols.clone(),
                     ns.basic.si_db_name.clone(),
@@ -60,15 +62,23 @@ impl Strategist {
                     ns.si_backends.len() as u32,
                 ))
             }
-            _ => Self::VectorTime(VectorTime::new_with_db(
-                ns.basic.db_name.clone(),
-                ns.basic.table_name.clone(),
-                ns.basic.db_count,
-                //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
-                ns.backends.iter().next().unwrap().1.len() as u32,
-                ns.basic.table_postfix.as_str().into(),
-                ns.basic.keys.clone(),
-            )),
+            _ => {
+                if ns.basic.keys.len() < 2 {
+                    log::warn!("len keys < 2");
+                    return None;
+                }
+                //最后一个key需要是日期
+                let _: Postfix = ns.basic.keys.last().unwrap().as_str().try_into().ok()?;
+                Self::VectorTime(VectorTime::new_with_db(
+                    ns.basic.db_name.clone(),
+                    ns.basic.table_name.clone(),
+                    ns.basic.db_count,
+                    //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
+                    ns.backends.iter().next().unwrap().1.len() as u32,
+                    ns.basic.table_postfix.as_str().try_into().ok()?,
+                    ns.basic.keys.clone(),
+                ))
+            }
         })
     }
     #[inline]

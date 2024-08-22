@@ -453,11 +453,13 @@ pub enum Postfix {
     YYMMDD,
 }
 
-impl Into<Postfix> for &str {
-    fn into(self) -> Postfix {
+impl TryInto<Postfix> for &str {
+    type Error = Error;
+    fn try_into(self) -> std::result::Result<Postfix, Self::Error> {
         match self.to_lowercase().as_str() {
-            DATE_YYMM => Postfix::YYMM,
-            _ => Postfix::YYMMDD,
+            DATE_YYMM => Ok(Postfix::YYMM),
+            DATE_YYMMDD => Ok(Postfix::YYMMDD),
+            _ => Err(Error::RequestProtocolInvalid),
         }
     }
 }
