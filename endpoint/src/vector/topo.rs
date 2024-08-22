@@ -149,7 +149,7 @@ where
     }
     fn more_get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
         //分别代表请求的轮次和每轮重试次数
-        let (round, runs) = (req.attach().round, req.ctx_mut().runs);
+        let runs = req.ctx_mut().runs;
         //runs == 0 表示第一轮第一次请求
         let shard = if runs == 0 || req.attach().rsp_ok {
             let shard = if runs == 0 {
@@ -176,7 +176,7 @@ where
                 &self.si_shard[si_shard_idx]
             } else {
                 assert!(req.get_next_round());
-                let (last, limit, date) = self.sql_info(req, round)?;
+                let (last, limit, date) = self.sql_info(req, req.attach().round)?;
                 let vector_builder = SqlBuilder::new(
                     &req.attach().vcmd,
                     req.hash(),
@@ -205,7 +205,7 @@ where
             // req.set_fitst_try();
             shard
         } else {
-            if round - 1 == 0 {
+            if req.attach().round - 1 == 0 {
                 //上一轮si表重试
                 &self.si_shard[req.ctx_mut().shard_idx as usize]
             } else {
