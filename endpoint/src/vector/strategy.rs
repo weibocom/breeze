@@ -108,6 +108,13 @@ impl Strategist {
         }
     }
 
+    pub(crate) fn check_vector_cmd(&self, vcmd: &protocol::vector::VectorCmd) -> Result<()> {
+        match self {
+            Strategist::VectorTime(inner) => inner.check_vector_cmd(vcmd),
+            Strategist::Batch(inner) => inner.check_vector_cmd(vcmd),
+        }
+    }
+
     // pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
     //     match self {
     //         Strategist::VectorTime(_) => panic!("VectorTime not support get_next_date"),
@@ -121,12 +128,6 @@ impl protocol::vector::Strategy for Strategist {
         match self {
             Strategist::VectorTime(inner) => inner.keys(),
             Strategist::Batch(inner) => inner.keys(),
-        }
-    }
-    fn keys_len(&self, cmd: CommandType) -> usize {
-        match self {
-            Strategist::VectorTime(inner) => inner.keys().len(),
-            Strategist::Batch(inner) => inner.keys_len(cmd),
         }
     }
     fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_> {

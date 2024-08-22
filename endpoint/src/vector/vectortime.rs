@@ -38,10 +38,6 @@ impl VectorTime {
     }
 
     pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate, Error> {
-        if keys.len() != self.keys_name.len() {
-            return Err(Error::RequestProtocolInvalid);
-        }
-
         let mut ymd = (0u16, 0u16, 0u16);
         for (i, key_name) in self.keys_name.iter().enumerate() {
             match key_name.as_str() {
@@ -115,6 +111,13 @@ impl VectorTime {
                     &_ => KeysType::Keys(key_name),
                 }),
         )
+    }
+
+    pub(crate) fn check_vector_cmd(&self, vcmd: &protocol::vector::VectorCmd) -> Result<(), Error> {
+        if vcmd.keys.len() != self.keys_name.len() {
+            return Err(Error::RequestProtocolInvalid);
+        }
+        Ok(())
     }
 }
 
