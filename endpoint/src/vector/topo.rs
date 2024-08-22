@@ -117,6 +117,7 @@ where
     fn get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
         let (year, shard_idx) = if req.ctx_mut().runs == 0 {
             let vcmd = parse_vector_detail(****req, req.flag())?;
+            self.strategist.check_vector_cmd(&vcmd)?;
             //定位年库
             let date = self.strategist.get_date(vcmd.cmd, &vcmd.keys)?;
             let year = date.year() as u16;
@@ -155,6 +156,7 @@ where
                 //请求si表
                 assert_eq!(*req.context_mut(), 0);
                 let vcmd = parse_vector_detail(****req, req.flag())?;
+                self.strategist.check_vector_cmd(&vcmd)?;
 
                 assert_eq!(req.attachment(), None);
                 let operation = req.operation();

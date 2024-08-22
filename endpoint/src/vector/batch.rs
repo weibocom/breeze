@@ -169,15 +169,6 @@ impl Batch {
         &self.si_cols
     }
 
-    pub(crate) fn keys_len(&self, cmd: CommandType) -> usize {
-        match cmd {
-            CommandType::VRange | CommandType::VGet => self.keys().len() - 1,
-            //相比vrange多了一个日期key
-            CommandType::VAdd | CommandType::VDel => self.keys().len(),
-            _ => panic!("not sup {cmd:?}"),
-        }
-    }
-
     pub(crate) fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_> {
         Box::new(
             self.keys_name
@@ -188,6 +179,29 @@ impl Batch {
                     &_ => KeysType::Keys(key_name),
                 }),
         )
+    }
+
+    //上行多带一个日期key，日期key固定在最后
+    pub(crate) fn check_vector_cmd(
+        &self,
+        vcmd: &protocol::vector::VectorCmd,
+    ) -> protocol::Result<()> {
+        match vcmd.cmd {
+            CommandType::VRange | CommandType::VGet => {
+                if vcmd.keys.len() != self.keys().len() - 1 {
+                    return Err(Error::RequestProtocolInvalid);
+                }
+                Ok(())
+            }
+            //相比vrange多了一个日期key
+            CommandType::VAdd | CommandType::VDel => {
+                if vcmd.keys.len() != self.keys().len() {
+                    return Err(Error::RequestProtocolInvalid);
+                }
+                Ok(())
+            }
+            _ => panic!("not sup {:?}", vcmd.cmd),
+        }
     }
 }
 

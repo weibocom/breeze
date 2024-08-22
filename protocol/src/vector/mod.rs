@@ -467,7 +467,6 @@ pub enum KeysType<'a> {
 
 pub trait Strategy {
     fn keys(&self) -> &[String];
-    fn keys_len(&self, cmd: CommandType) -> usize;
     //todo 通过代理类型实现
     fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_>;
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64);
