@@ -39,7 +39,7 @@ impl Timeout {
         me
     }
     pub fn adjust(&mut self, ms: u32) {
-        self.ms = ms.max(100).min(6000) as u16;
+        self.ms = ms.max(10).min(6000) as u16;
     }
     pub fn to(mut self, ms: u32) -> Self {
         if ms > 0 {
