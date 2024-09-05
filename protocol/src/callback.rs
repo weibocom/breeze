@@ -1,5 +1,4 @@
 use std::{
-    cell::OnceCell,
     mem::MaybeUninit,
     ptr::{self, NonNull},
     sync::{
@@ -8,7 +7,7 @@ use std::{
     },
 };
 
-use crate::BackendQuota;
+use crate::{Attachment, BackendQuota};
 use ds::{time::Instant, AtomicWaker};
 
 use crate::{request::Request, Command, Error, HashedCommand};
@@ -38,7 +37,7 @@ pub struct CallbackContext {
     pub(crate) try_next: bool,           // 请求失败后，topo层面是否允许重试
     pub(crate) retry_on_rsp_notok: bool, // 有响应且响应不ok时，协议层面是否允许重试
     pub(crate) write_back: bool,         // 请求结束后，是否需要回写。
-    pub(crate) max_tries: OnceCell<u8>,  // 最大重试次数
+    pub(crate) max_tries: u8,            // 最大重试次数
     first: bool,                         // 当前请求是否是所有子请求的第一个
     last: bool,                          // 当前请求是否是所有子请求的最后一个
     tries: AtomicU8,
@@ -48,6 +47,8 @@ pub struct CallbackContext {
     waker: *const Arc<AtomicWaker>,
     callback: CallbackPtr,
     quota: Option<BackendQuota>,
+    attachment: Option<Attachment>, // 附加数据，用于辅助请求和响应，目前只有kvector在使用
+    drop_attach: Option<Box<dyn Fn(Attachment)>>,
 }
 
 impl CallbackContext {
@@ -60,6 +61,7 @@ impl CallbackContext {
         last: bool,
         retry_on_rsp_notok: bool,
         max_tries: u8,
+        drop_attach: Option<Box<dyn Fn(Attachment)>>,
     ) -> Self {
         log::debug!("request prepared:{}", req);
         let now = Instant::now();
@@ -73,7 +75,7 @@ impl CallbackContext {
             try_next: false,
             retry_on_rsp_notok,
             write_back: false,
-            max_tries: OnceCell::from(max_tries),
+            max_tries,
             request: req,
             response: MaybeUninit::uninit(),
             callback: cb,
@@ -81,6 +83,8 @@ impl CallbackContext {
             tries: 0.into(),
             waker,
             quota: None,
+            attachment: None,
+            drop_attach,
         }
     }
 
@@ -114,14 +118,46 @@ impl CallbackContext {
         }
     }
     #[inline]
-    pub fn on_complete(&mut self, resp: Command) {
+    pub fn on_complete<P: crate::Proto>(&mut self, parser: &P, resp: Command) {
         log::debug!("on-complete:{} resp:{}", self, resp);
         // 异步请求不关注response。
         if !self.async_mode {
             debug_assert!(!self.complete(), "{:?}", self);
-            self.swap_response(resp);
+            if self.attachment.is_some() {
+                // vector聚合场景
+                self.on_complete_aggregate(parser, resp);
+            } else {
+                self.swap_response(resp);
+            }
         }
         self.on_done();
+    }
+
+    #[inline]
+    pub fn on_complete_aggregate<P: crate::Proto>(&mut self, parser: &P, mut resp: Command) {
+        // 返回成功：
+        //   1. 第一轮获取si；若si获取失败（例如si为空），则终止请求
+        //   2. 后续轮次更新attachment，并判断是否是最后一轮。
+        // 返回失败，则终止请求。
+        if resp.ok() {
+            // 更新attachment
+            let attach = self.attachment.as_mut().expect("attach");
+            let last = parser.update_attachment(attach, &mut resp);
+            if last {
+                self.set_last(true);
+            }
+            // 更新attachment不成功，或者响应数足够,终止请求
+        } else {
+            self.set_last(true);
+        }
+        if self.last() {
+            // 中间轮次的resp没有被使用，可忽略;
+            self.swap_response(resp);
+        } else {
+            // 重置下一轮访问需要的变量
+            self.try_next = true; // 可以进入下一轮访问
+            self.set_fitst_try();
+        }
     }
 
     #[inline]
@@ -142,7 +178,7 @@ impl CallbackContext {
             // 当前重试条件为 rsp == None || ("mc" && !rsp.ok())
             if self.inited() {
                 // 优先筛出正常的请求，便于理解
-                // rsp.ok 不需要重试
+                // rsp.ok
                 if unsafe { self.unchecked_response().ok() } {
                     return false;
                 }
@@ -151,8 +187,8 @@ impl CallbackContext {
                     return false;
                 }
             }
-            let max_tries = *self.max_tries.get().expect("max tries");
-            self.try_next && self.tries.fetch_add(1, Release) < max_tries
+
+            self.try_next && self.tries.fetch_add(1, Release) < self.max_tries
         } else {
             // write back请求
             self.write_back
@@ -172,6 +208,10 @@ impl CallbackContext {
             // 需要重试或回写
             return self.goon();
         }
+
+        // 改到这里，不需要额外判断逻辑了
+        self.set_last(true);
+
         //markdone后，req标记为已完成，那么CallbackContext和CopyBidirectional都有可能被释放
         //CopyBidirectional会提前释放，所以需要提前clone一份
         //CallbackContext会提前释放，则需要在此clone到栈上
@@ -290,6 +330,27 @@ impl CallbackContext {
     pub fn quota(&mut self, quota: BackendQuota) {
         self.quota = Some(quota);
     }
+    #[inline]
+    pub fn attachment(&self) -> Option<&Attachment> {
+        self.attachment.as_ref()
+    }
+    #[inline]
+    pub fn attachment_mut(&mut self) -> &mut Option<Attachment> {
+        &mut self.attachment
+    }
+    #[inline]
+    pub fn set_last(&mut self, last: bool) {
+        // todo: 可优化为依据请求数或者响应数量判断可以设置last为true
+        self.last = last;
+    }
+    #[inline]
+    pub fn set_max_tries(&mut self, max_tries: u8) {
+        self.max_tries = max_tries;
+    }
+    #[inline]
+    pub fn set_fitst_try(&mut self) {
+        self.tries = 0.into();
+    }
 }
 
 impl Drop for CallbackContext {
@@ -300,6 +361,9 @@ impl Drop for CallbackContext {
         // 可以尝试检查double free
         // 在debug环境中，设置done为false
         debug_assert_eq!(*self.done.get_mut() = false, ());
+        if let Some(attachment) = self.attachment.take() {
+            (self.drop_attach.as_ref().expect("should has drop_attach"))(attachment);
+        }
     }
 }
 

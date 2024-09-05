@@ -640,6 +640,7 @@ impl ColumnType {
                 | MYSQL_TYPE_INT24
                 | MYSQL_TYPE_LONG
                 | MYSQL_TYPE_LONGLONG
+                | MYSQL_TYPE_NEWDECIMAL
         )
     }
 
