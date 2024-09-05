@@ -1,8 +1,8 @@
 use std::fmt::Write;
 
-pub use crate::kv::strategy::Postfix;
 use chrono::NaiveDate;
 use ds::RingSlice;
+use protocol::vector::{CommandType, KeysType, Postfix};
 use protocol::Result;
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
@@ -39,36 +39,46 @@ impl Strategist {
     pub fn try_from(ns: &VectorNamespace) -> Option<Self> {
         Some(match ns.basic.strategy.as_str() {
             "aggregation" => {
-                //至少需要date和count两个字段名
-                if ns.basic.si_cols.len() < 2 || ns.basic.keys.len() != 1 {
-                    log::warn!("len si_cols < 2 or len keys != 1");
+                //至少需要date和count两个字段名，keys至少需要id+time
+                if ns.basic.ext_si.cols.len() < 2 || ns.basic.keys.len() < 2 {
+                    log::warn!("len si_cols < 2 or len keys < 2");
                     return None;
                 }
+                //最后一个key需要是日期
+                let _: Postfix = ns.basic.keys.last().unwrap().as_str().try_into().ok()?;
                 Self::Batch(Batch::new_with_db(
                     ns.basic.db_name.clone(),
                     ns.basic.table_name.clone(),
                     ns.basic.db_count,
                     //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
                     ns.backends.iter().next().unwrap().1.len() as u32,
-                    ns.basic.table_postfix.as_str().into(),
+                    ns.basic.table_postfix.as_str().try_into().ok()?,
                     ns.basic.keys.clone(),
-                    ns.basic.si_cols.clone(),
-                    ns.basic.si_db_name.clone(),
-                    ns.basic.si_db_count,
-                    ns.basic.si_table_name.clone(),
-                    ns.basic.si_table_count,
-                    ns.si_backends.len() as u32,
+                    ns.basic.ext_si.cols.clone(),
+                    ns.basic.ext_si.db_name.clone(),
+                    ns.basic.ext_si.db_count,
+                    ns.basic.ext_si.table_name.clone(),
+                    ns.basic.ext_si.table_count,
+                    ns.ext_si_backends.len() as u32,
                 ))
             }
-            _ => Self::VectorTime(VectorTime::new_with_db(
-                ns.basic.db_name.clone(),
-                ns.basic.table_name.clone(),
-                ns.basic.db_count,
-                //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
-                ns.backends.iter().next().unwrap().1.len() as u32,
-                ns.basic.table_postfix.as_str().into(),
-                ns.basic.keys.clone(),
-            )),
+            _ => {
+                if ns.basic.keys.len() < 2 {
+                    log::warn!("len keys < 2");
+                    return None;
+                }
+                //最后一个key需要是日期
+                let _: Postfix = ns.basic.keys.last().unwrap().as_str().try_into().ok()?;
+                Self::VectorTime(VectorTime::new_with_db(
+                    ns.basic.db_name.clone(),
+                    ns.basic.table_name.clone(),
+                    ns.basic.db_count,
+                    //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
+                    ns.backends.iter().next().unwrap().1.len() as u32,
+                    ns.basic.table_postfix.as_str().try_into().ok()?,
+                    ns.basic.keys.clone(),
+                ))
+            }
         })
     }
     #[inline]
@@ -93,10 +103,10 @@ impl Strategist {
         }
     }
     #[inline]
-    pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate> {
+    pub fn get_date(&self, cmd: CommandType, keys: &[RingSlice]) -> Result<NaiveDate> {
         match self {
             Strategist::VectorTime(inner) => inner.get_date(keys),
-            Strategist::Batch(inner) => inner.get_date(keys),
+            Strategist::Batch(inner) => inner.get_date(cmd, keys),
         }
     }
     // 请求成功后，是否有更多的数据需要请求
@@ -105,6 +115,13 @@ impl Strategist {
         match self {
             Strategist::VectorTime(_) => false,
             Strategist::Batch(_) => true,
+        }
+    }
+
+    pub(crate) fn check_vector_cmd(&self, vcmd: &protocol::vector::VectorCmd) -> Result<()> {
+        match self {
+            Strategist::VectorTime(inner) => inner.check_vector_cmd(vcmd),
+            Strategist::Batch(inner) => inner.check_vector_cmd(vcmd),
         }
     }
 
@@ -123,10 +140,10 @@ impl protocol::vector::Strategy for Strategist {
             Strategist::Batch(inner) => inner.keys(),
         }
     }
-    fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
+    fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_> {
         match self {
-            Strategist::VectorTime(inner) => inner.condition_keys(),
-            Strategist::Batch(inner) => inner.condition_keys(),
+            Strategist::VectorTime(inner) => inner.keys_with_type(),
+            Strategist::Batch(inner) => inner.keys_with_type(),
         }
     }
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
@@ -194,20 +211,14 @@ mod tests {
                 timeout_ms_slave: Default::default(),
                 db_name: "db_name".into(),
                 table_name: "table_name".into(),
-                table_postfix: "yymm".into(),
+                table_postfix: DATE_YYMM.into(),
                 db_count: 32,
-                keys: vec!["kid".into(), "yymm".into()],
+                keys: vec!["kid".into(), DATE_YYMM.into()],
                 strategy: Default::default(),
                 password: Default::default(),
                 user: Default::default(),
                 region_enabled: Default::default(),
-                si_db_name: Default::default(),
-                si_table_name: Default::default(),
-                si_db_count: Default::default(),
-                si_table_count: Default::default(),
-                si_user: Default::default(),
-                si_password: Default::default(),
-                si_cols: Default::default(),
+                ext_si: Default::default(),
             },
             backends_flaten: Default::default(),
             backends: HashMap::from([(
@@ -217,7 +228,7 @@ mod tests {
                     "127.0.0.1:8081,127.0.0.2:8081".into(),
                 ],
             )]),
-            si_backends: Default::default(),
+            ext_si_backends: Default::default(),
         };
         let strategy = Strategist::try_from(&ns).unwrap();
         let mut buf = String::new();
@@ -242,7 +253,7 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap();
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -268,7 +279,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -316,7 +327,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -359,7 +370,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -400,7 +411,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -454,7 +465,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -497,7 +508,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -526,7 +537,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -552,7 +563,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
@@ -600,7 +611,7 @@ mod tests {
         let builder =
             SqlBuilder::new(&vector_cmd, hash, date, &strategy, Default::default()).unwrap();
         buf.clear();
-        builder.write_sql(buf);
+        let _ = builder.write_sql(buf);
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(

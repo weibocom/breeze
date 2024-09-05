@@ -6,8 +6,9 @@ use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::{ContextStatus, MysqlBuilder};
-use protocol::vector::attachment::{VAttach, VecAttach};
+use protocol::vector::attachment::{VAttach, VectorAttach};
 use protocol::vector::redis::parse_vector_detail;
+use protocol::vector::CommandType;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -74,11 +75,51 @@ where
     Req: Request,
     P: Protocol,
 {
+    fn sql_info(
+        &self,
+        req: &mut Req,
+        round: u16,
+    ) -> Result<(bool, u16, NaiveDate), protocol::Error> {
+        let vcmd = &req.attach().vcmd;
+        match vcmd.cmd {
+            CommandType::VRange => {
+                //根据round获取si
+                let attach = req.attach().retrieve_attach();
+                let si_items = attach.si();
+                assert!(si_items.len() > 0, "si_items.len() = 0");
+                assert!(
+                    round <= si_items.len() as u16,
+                    "round = {round}, si_items.len() = {}",
+                    si_items.len()
+                );
+                let si_item = &si_items[(round - 1) as usize];
+
+                let year = si_item.date.year as u16 + 2000;
+                //构建sql
+                let limit = attach.left_count.min(si_item.count);
+                assert!(si_item.count > 0, "{}", si_item.count);
+                assert!(attach.left_count > 0, "{}", attach.left_count);
+
+                let Some(date) = NaiveDate::from_ymd_opt(year.into(), si_item.date.month.into(), 1)
+                else {
+                    return Err(protocol::Error::ResponseInvalidMagic);
+                };
+                Ok((round == si_items.len() as u16, limit, date))
+            }
+            CommandType::VAdd | CommandType::VDel => {
+                let date = self.strategist.get_date(vcmd.cmd, &vcmd.keys)?;
+                Ok((true, 0, date))
+            }
+            _ => panic!("not sup {:?}", vcmd.cmd),
+        }
+    }
+
     fn get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
         let (year, shard_idx) = if req.ctx_mut().runs == 0 {
             let vcmd = parse_vector_detail(****req, req.flag())?;
+            self.strategist.check_vector_cmd(&vcmd)?;
             //定位年库
-            let date = self.strategist.get_date(&vcmd.keys)?;
+            let date = self.strategist.get_date(vcmd.cmd, &vcmd.keys)?;
             let year = date.year() as u16;
 
             let shard_idx = self.shard_idx(req.hash());
@@ -107,55 +148,35 @@ where
         Ok(shard)
     }
     fn more_get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
-        req.attachment_mut()
-            .get_or_insert(VecAttach::default().to_attach());
         //分别代表请求的轮次和每轮重试次数
-        let (round, runs) = (req.attach().round, req.ctx_mut().runs);
+        let runs = req.ctx_mut().runs;
         //runs == 0 表示第一轮第一次请求
         let shard = if runs == 0 || req.attach().rsp_ok {
             let shard = if runs == 0 {
                 //请求si表
-                assert_eq!(req.attach().left_count, 0);
                 assert_eq!(*req.context_mut(), 0);
                 let vcmd = parse_vector_detail(****req, req.flag())?;
-                if req.operation().is_retrival() {
-                    req.retry_on_rsp_notok(true);
-                    let limit = vcmd.limit();
-                    assert!(limit > 0, "{limit}");
-                    //需要在buildsql之前设置
-                    req.attach_mut().init(limit as u16);
-                }
+                self.strategist.check_vector_cmd(&vcmd)?;
 
-                let si_sql = SiSqlBuilder::new(&vcmd, req.hash(), &self.strategist)?;
+                assert_eq!(req.attachment(), None);
+                let operation = req.operation();
+                let _ = req
+                    .attachment_mut()
+                    .insert(VectorAttach::new(operation, vcmd.limit() as u16).to_attach());
+                //上行请求不需要初始化leftcount
+                let date = self.strategist.get_date(vcmd.cmd, &vcmd.keys)?;
+                let si_sql = SiSqlBuilder::new(&vcmd, req.hash(), date, &self.strategist)?;
                 let cmd = MysqlBuilder::build_packets_for_vector(si_sql)?;
                 req.reshape(MemGuard::from_vec(cmd));
 
                 let si_shard_idx = self.strategist.si_distribution().index(req.hash());
                 req.ctx_mut().shard_idx = si_shard_idx as u16;
                 req.attach_mut().vcmd = vcmd;
-                req.set_last(false);
+                req.set_next_round(true);
                 &self.si_shard[si_shard_idx]
             } else {
-                //根据round获取si
-                let si_items = req.attach().si();
-                assert!(si_items.len() > 0, "si_items.len() = 0");
-                assert!(
-                    round <= si_items.len() as u16,
-                    "round = {round}, si_items.len() = {}",
-                    si_items.len()
-                );
-                let si_item = &si_items[(round - 1) as usize];
-
-                let year = si_item.date.year as u16 + 2000;
-                //构建sql
-                let limit = req.attach().left_count.min(si_item.count);
-                assert!(si_item.count > 0, "{}", si_item.count);
-                assert!(req.attach().left_count > 0, "{}", req.attach().left_count);
-
-                let Some(date) = NaiveDate::from_ymd_opt(year.into(), si_item.date.month.into(), 1)
-                else {
-                    return Err(protocol::Error::ResponseInvalidMagic);
-                };
+                assert!(req.get_next_round());
+                let (last, limit, date) = self.sql_info(req, req.attach().round)?;
                 let vector_builder = SqlBuilder::new(
                     &req.attach().vcmd,
                     req.hash(),
@@ -165,17 +186,15 @@ where
                 )?;
                 let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
 
-                //更新轮次信息
-                if round == si_items.len() as u16 {
-                    req.set_last(true);
+                if last {
+                    req.set_next_round(false);
                 }
-
                 req.reshape(MemGuard::from_vec(cmd));
                 //获取shard
                 let shard_idx = self.shard_idx(req.hash());
-                req.ctx_mut().year = year;
+                req.ctx_mut().year = date.year() as u16;
                 req.ctx_mut().shard_idx = shard_idx as u16;
-                let shards = self.shards.get(year);
+                let shards = self.shards.get(date.year() as u16);
                 shards.get(shard_idx).ok_or(protocol::Error::TopInvalid)?
             };
 
@@ -183,10 +202,10 @@ where
             req.attach_mut().rsp_ok = false;
             req.attach_mut().round += 1;
             req.ctx_mut().runs = 0;
-            req.set_fitst_try();
+            // req.set_fitst_try();
             shard
         } else {
-            if round - 1 == 0 {
+            if req.attach().round - 1 == 0 {
                 //上一轮si表重试
                 &self.si_shard[req.ctx_mut().shard_idx as usize]
             } else {
@@ -207,6 +226,7 @@ where
         Ok(shard)
     }
 }
+
 impl<E, Req, P> Endpoint for VectorService<E, P>
 where
     E: Endpoint<Item = Req>,
@@ -257,6 +277,8 @@ where
             req.try_next(try_next);
             endpoint.send(req)
         } else {
+            let ctx = req.ctx_mut();
+            ctx.runs += 1;
             shard.master().send(req);
         }
     }
@@ -405,7 +427,8 @@ where
                     self.cfg.basic.selector.tuning_mode(),
                     master,
                     replicas,
-                    false,
+                    self.cfg.basic.region_enabled,
+                    // false,
                 );
                 shards_per_interval.push(shard);
             }
@@ -429,8 +452,8 @@ where
     #[inline]
     fn load_inner_si(&mut self) -> bool {
         // 所有的ip要都能解析出主从域名
-        let mut addrs = Vec::with_capacity(self.cfg.si_backends.len());
-        for shard in &self.cfg.si_backends {
+        let mut addrs = Vec::with_capacity(self.cfg.ext_si_backends.len());
+        for shard in &self.cfg.ext_si_backends {
             let shard: Vec<&str> = shard.split(",").collect();
             if shard.len() < 2 {
                 log::warn!("{} si both master and slave required.", self.cfg.service);
@@ -486,8 +509,8 @@ where
             assert_ne!(slaves.len(), 0);
             // 用户名和密码
             let res_option = ResOption {
-                token: self.cfg.basic.si_password.clone(),
-                username: self.cfg.basic.si_user.clone(),
+                token: self.cfg.basic.ext_si.password.clone(),
+                username: self.cfg.basic.ext_si.user.clone(),
             };
             let master = self.take_or_build(
                 &mut old,

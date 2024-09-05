@@ -4,10 +4,10 @@ use crate::kv::common::Command;
 use crate::kv::{MysqlBinary, VectorSqlBuilder};
 use crate::vector::{CommandType, Condition, Field, VectorCmd};
 use crate::{Error, Result};
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use ds::RingSlice;
 
-use super::Strategy;
+use super::{KeysType, Strategy};
 
 struct VRingSlice<'a>(&'a RingSlice);
 impl<'a> Display for VRingSlice<'a> {
@@ -107,8 +107,8 @@ struct InsertCols<'a, S>(&'a S, &'a Vec<Field>);
 impl<'a, S: Strategy> Display for InsertCols<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self(strategy, fields) = self;
-        for (i, key) in (&mut strategy.condition_keys()).enumerate() {
-            if let Some(key) = key {
+        for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
+            if let KeysType::Keys(key) = key {
                 if i == 0 {
                     let _ = write!(f, "`{}`", key);
                 } else {
@@ -127,8 +127,8 @@ struct InsertVals<'a, S>(&'a S, &'a Vec<RingSlice>, &'a Vec<Field>);
 impl<'a, S: Strategy> Display for InsertVals<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self(strategy, keys, fields) = self;
-        for (i, key) in (&mut strategy.condition_keys()).enumerate() {
-            if let Some(_) = key {
+        for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
+            if let KeysType::Keys(_) = key {
                 if i == 0 {
                     let _ = write!(f, "{}", Val(&keys[i]));
                 } else {
@@ -173,8 +173,8 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
             },
             extra,
         ) = self;
-        for (i, key) in (&mut strategy.condition_keys()).enumerate() {
-            if let Some(key) = key {
+        for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
+            if let KeysType::Keys(key) = key {
                 if i == 0 {
                     let _ = write!(f, "`{}`={}", key, Val(&keys[i]));
                 } else {
@@ -227,17 +227,13 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
         strategy: &'a S,
         limit: u64,
     ) -> Result<Self> {
-        if vcmd.keys.len() != strategy.keys().len() {
-            Err(Error::RequestProtocolInvalid)
-        } else {
-            Ok(Self {
-                vcmd,
-                hash,
-                date,
-                strategy,
-                limit,
-            })
-        }
+        Ok(Self {
+            vcmd,
+            hash,
+            date,
+            strategy,
+            limit,
+        })
     }
 }
 
@@ -291,7 +287,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
         base.max(64)
     }
 
-    fn write_sql(&self, buf: &mut impl Write) {
+    fn write_sql(&self, buf: &mut impl Write) -> crate::Result<()> {
         match self.vcmd.cmd {
             CommandType::VRange | CommandType::VGet => {
                 let _ = write!(
@@ -341,6 +337,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                 panic!("not support cmd_type:{:?}", self.vcmd.cmd);
             }
         }
+        Ok(())
     }
 }
 
@@ -348,19 +345,17 @@ pub struct SiSqlBuilder<'a, S> {
     vcmd: &'a VectorCmd,
     hash: i64,
     strategy: &'a S,
+    date: NaiveDate,
 }
 
 impl<'a, S: Strategy> SiSqlBuilder<'a, S> {
-    pub fn new(vcmd: &'a VectorCmd, hash: i64, strategy: &'a S) -> Result<Self> {
-        if vcmd.keys.len() != strategy.keys().len() {
-            Err(Error::RequestProtocolInvalid)
-        } else {
-            Ok(Self {
-                vcmd,
-                hash,
-                strategy,
-            })
-        }
+    pub fn new(vcmd: &'a VectorCmd, hash: i64, date: NaiveDate, strategy: &'a S) -> Result<Self> {
+        Ok(Self {
+            vcmd,
+            hash,
+            strategy,
+            date,
+        })
     }
 }
 
@@ -383,7 +378,8 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
 
     // select date，count字段名，
     // 条件需要key，字段名
-    fn write_sql(&self, buf: &mut impl Write) {
+
+    fn write_sql(&self, buf: &mut impl Write) -> crate::Result<()> {
         match self.vcmd.cmd {
             CommandType::VRange => {
                 let _ = write!(
@@ -394,11 +390,43 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
                     SiKeysAndCondsAndOrder(self.strategy, &self.vcmd),
                 );
             }
+            // 1.1. 更新si： insert into $db$.$tb$ (uid, object_type, start_date, count) values (?, ?, ?, 1) on duplicate key update count=greatest(0, cast(count as signed) + 1)。
+            // 1.2. 根据设置更新timeline：insert into $db$.$tb$ (uid, object_type, like_id, object_id) values (?, ?, ?, ?)
+            // 备注：有些场景只更新si，有些场景只更新timeline，需要业务修改时考虑。
+            // 1.3. mesh cmd: vadd $uid,$date object_type $obj_type object_id $obj_id like_id $like_id
+            CommandType::VAdd => {
+                let count = self.strategy.si_cols().last().unwrap();
+                //对si表的更新插入至少需要keys + count + counttype 这些字段，下面会兜底校验
+                write!(
+                    buf,
+                    "insert into {} ({}) values ({}) on duplicate key update {}=greatest(0, cast({} as signed) + 1)",
+                    SiTable(self.strategy, self.hash),
+                    SiInsertCols(self.strategy, &self.vcmd.fields),
+                    SiInsertVals(self.strategy,&self.date, &self.vcmd.keys, &self.vcmd.fields),
+                    count,
+                    count,
+                ).map_err(|_| Error::RequestProtocolInvalid)?;
+            }
+            // 2.1. 更新si：update $db$.$tb$ set count = greatest(0,cast(count as signed) - 1) where uid = ? and object_type = ? and start_date = ?
+            // 2.2. 删除timeline：delete from $db$.$tb$ where uid=? and object_id=?
+            // 备注：有些场景只更新si，有些场景只更新timeline，需要业务修改时考虑。
+            // 1.3. mesh cmd: vdel $uid,$date where object_type = $obj_type object_id = $obj_id
+            CommandType::VDel => {
+                //对si表的更新插入至少需要keys + count + counttype 这些字段，下面会兜底校验
+                write!(
+                    buf,
+                    "update {} set count = greatest(0,cast(count as signed) - 1) where {}",
+                    SiTable(self.strategy, self.hash),
+                    SiKeysAndDelConds(self.strategy, &self.vcmd, &self.date),
+                )
+                .map_err(|_| Error::RequestProtocolInvalid)?;
+            }
             _ => {
                 //校验应该在parser_req出
                 panic!("not support cmd_type:{:?}", self.vcmd.cmd);
             }
-        }
+        };
+        Ok(())
     }
 }
 
@@ -447,6 +475,121 @@ struct SiTable<'a, S>(&'a S, i64);
 impl<'a, S: Strategy> Display for SiTable<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.write_si_database_table(f, self.1);
+        Ok(())
+    }
+}
+
+struct SiInsertCols<'a, S>(&'a S, &'a Vec<Field>);
+impl<'a, S: Strategy> Display for SiInsertCols<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &Self(strategy, fields) = self;
+        for (i, key) in strategy.keys_with_type().enumerate() {
+            if let KeysType::Keys(key) = key {
+                if i == 0 {
+                    let _ = write!(f, "`{}`", key);
+                } else {
+                    let _ = write!(f, ",`{}`", key);
+                }
+            }
+        }
+        let mut has_count_type = false;
+        let si_cols = strategy.si_cols();
+        for field in fields {
+            for col in si_cols {
+                if field.0.equal(col.as_bytes()) {
+                    let _ = write!(f, ",{}", Key(&field.0));
+                    has_count_type = true;
+                }
+            }
+        }
+        //必须提供count_type
+        if si_cols.len() > 2 && !has_count_type {
+            return Err(std::fmt::Error);
+        }
+        //date,count
+        let _ = write!(
+            f,
+            ",{},{}",
+            si_cols.first().unwrap(),
+            si_cols.last().unwrap()
+        );
+        Ok(())
+    }
+}
+
+struct SiInsertVals<'a, S>(&'a S, &'a NaiveDate, &'a Vec<RingSlice>, &'a Vec<Field>);
+impl<'a, S: Strategy> Display for SiInsertVals<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &Self(strategy, date, keys, fields) = self;
+        for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
+            if let KeysType::Keys(_) = key {
+                if i == 0 {
+                    let _ = write!(f, "{}", Val(&keys[i]));
+                } else {
+                    let _ = write!(f, ",{}", Val(&keys[i]));
+                }
+            }
+        }
+        let si_cols = strategy.si_cols();
+        for field in fields {
+            for col in si_cols {
+                if field.0.equal(col.as_bytes()) {
+                    let _ = write!(f, ",{}", Val(&field.1));
+                }
+            }
+        }
+        //date,count
+        // 写startdate的格式都是统一按照YY-mm-dd写的
+        let _ = write!(
+            f,
+            ",'{}-{}-{}',{}",
+            date.year(),
+            date.month(),
+            date.day(),
+            1
+        );
+        Ok(())
+    }
+}
+
+struct SiKeysAndDelConds<'a, S>(&'a S, &'a VectorCmd, &'a NaiveDate);
+impl<'a, S: Strategy> Display for SiKeysAndDelConds<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &Self(strategy, VectorCmd { keys, wheres, .. }, date) = self;
+        for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
+            if let KeysType::Keys(key) = key {
+                if i == 0 {
+                    let _ = write!(f, "`{}`={}", key, Val(&keys[i]));
+                } else {
+                    let _ = write!(f, " and `{}`={}", key, Val(&keys[i]));
+                }
+            }
+        }
+        let mut has_count_type = false;
+        let si_cols = strategy.si_cols();
+        for w in wheres {
+            //条件中和si相同的列写入条件
+            for col in si_cols {
+                if w.field.equal(col.as_bytes()) {
+                    let _ = write!(f, " and {}", ConditionDisplay(w));
+                    has_count_type = true;
+                    break;
+                }
+            }
+        }
+        //必须提供count_type
+        if si_cols.len() > 2 && !has_count_type {
+            return Err(std::fmt::Error);
+        }
+        //date
+        let _ = write!(
+            f,
+            " and {}='{}-{}-{}'",
+            si_cols.first().unwrap(),
+            date.year(),
+            date.month(),
+            date.day(),
+        );
         Ok(())
     }
 }
