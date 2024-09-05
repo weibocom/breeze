@@ -40,7 +40,7 @@ impl Strategist {
         Some(match ns.basic.strategy.as_str() {
             "aggregation" => {
                 //至少需要date和count两个字段名，keys至少需要id+time
-                if ns.basic.si_cols.len() < 2 || ns.basic.keys.len() < 2 {
+                if ns.basic.ext_si.cols.len() < 2 || ns.basic.keys.len() < 2 {
                     log::warn!("len si_cols < 2 or len keys < 2");
                     return None;
                 }
@@ -54,12 +54,12 @@ impl Strategist {
                     ns.backends.iter().next().unwrap().1.len() as u32,
                     ns.basic.table_postfix.as_str().try_into().ok()?,
                     ns.basic.keys.clone(),
-                    ns.basic.si_cols.clone(),
-                    ns.basic.si_db_name.clone(),
-                    ns.basic.si_db_count,
-                    ns.basic.si_table_name.clone(),
-                    ns.basic.si_table_count,
-                    ns.si_backends.len() as u32,
+                    ns.basic.ext_si.cols.clone(),
+                    ns.basic.ext_si.db_name.clone(),
+                    ns.basic.ext_si.db_count,
+                    ns.basic.ext_si.table_name.clone(),
+                    ns.basic.ext_si.table_count,
+                    ns.ext_si_backends.len() as u32,
                 ))
             }
             _ => {
@@ -218,13 +218,7 @@ mod tests {
                 password: Default::default(),
                 user: Default::default(),
                 region_enabled: Default::default(),
-                si_db_name: Default::default(),
-                si_table_name: Default::default(),
-                si_db_count: Default::default(),
-                si_table_count: Default::default(),
-                si_user: Default::default(),
-                si_password: Default::default(),
-                si_cols: Default::default(),
+                ext_si: Default::default(),
             },
             backends_flaten: Default::default(),
             backends: HashMap::from([(
@@ -234,7 +228,7 @@ mod tests {
                     "127.0.0.1:8081,127.0.0.2:8081".into(),
                 ],
             )]),
-            si_backends: Default::default(),
+            ext_si_backends: Default::default(),
         };
         let strategy = Strategist::try_from(&ns).unwrap();
         let mut buf = String::new();

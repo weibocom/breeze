@@ -427,7 +427,8 @@ where
                     self.cfg.basic.selector.tuning_mode(),
                     master,
                     replicas,
-                    false,
+                    self.cfg.basic.region_enabled,
+                    // false,
                 );
                 shards_per_interval.push(shard);
             }
@@ -451,8 +452,8 @@ where
     #[inline]
     fn load_inner_si(&mut self) -> bool {
         // 所有的ip要都能解析出主从域名
-        let mut addrs = Vec::with_capacity(self.cfg.si_backends.len());
-        for shard in &self.cfg.si_backends {
+        let mut addrs = Vec::with_capacity(self.cfg.ext_si_backends.len());
+        for shard in &self.cfg.ext_si_backends {
             let shard: Vec<&str> = shard.split(",").collect();
             if shard.len() < 2 {
                 log::warn!("{} si both master and slave required.", self.cfg.service);
@@ -508,8 +509,8 @@ where
             assert_ne!(slaves.len(), 0);
             // 用户名和密码
             let res_option = ResOption {
-                token: self.cfg.basic.si_password.clone(),
-                username: self.cfg.basic.si_user.clone(),
+                token: self.cfg.basic.ext_si.password.clone(),
+                username: self.cfg.basic.ext_si.user.clone(),
             };
             let master = self.take_or_build(
                 &mut old,
