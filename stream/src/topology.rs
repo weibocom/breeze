@@ -83,4 +83,7 @@ impl<T: Topology> Topology for CheckedTopology<T> {
     fn exp_sec(&self) -> u32 {
         self.top.exp_sec()
     }
+    fn has_attach(&self) -> bool {
+        self.top.has_attach()
+    }
 }

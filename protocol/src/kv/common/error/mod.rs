@@ -63,7 +63,9 @@ pub enum Error {
     UrlError(UrlError),
     #[cfg(any(feature = "native-tls", feature = "rustls"))]
     TlsError(tls::TlsError),
+    #[allow(dead_code)]
     FromValueError(Value),
+    #[allow(dead_code)]
     FromRowError(Row),
 }
 

@@ -11,7 +11,7 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use crate::topology::TopologyCheck;
 use ds::{time::Instant, AtomicWaker};
 use endpoint::Topology;
-use protocol::Error::FlushOnClose;
+use protocol::{Attachment, Error::FlushOnClose};
 use protocol::{HashedCommand, Protocol, Result, Stream};
 
 use crate::{
@@ -124,6 +124,7 @@ where
             arena: &mut self.arena,
             retry_on_rsp_notok: self.parser.config().retry_on_rsp_notok,
             parser: &self.parser,
+            has_attach: self.top.has_attach(),
         };
 
         self.parser
@@ -163,7 +164,6 @@ where
 
             *self.metrics.key() += 1;
             let mut response = ctx.take_response();
-
             self.parser.write_response(
                 &mut ResponseContext::new(&mut ctx, &self.metrics, |hash| self.top.shard_idx(hash)),
                 response.as_mut(),
@@ -222,6 +222,7 @@ struct Visitor<'a, T, P> {
     first: &'a mut bool,
     arena: &'a mut CallbackContextArena,
     retry_on_rsp_notok: bool,
+    has_attach: bool,
 }
 
 impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> protocol::RequestProcessor
@@ -235,6 +236,12 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> protocol::Req
         *self.first = last;
         let cb = self.top.callback();
         let req_op = cmd.operation();
+        let drop_attach: Option<Box<dyn Fn(Attachment)>> = if self.has_attach {
+            let parser = self.parser.clone();
+            Some(Box::new(move |att| parser.drop_attach(att)))
+        } else {
+            None
+        };
         let ctx = self.arena.alloc(CallbackContext::new(
             cmd,
             self.waker,
@@ -243,6 +250,7 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> protocol::Req
             last,
             self.retry_on_rsp_notok,
             self.parser.max_tries(req_op),
+            drop_attach,
         ));
         let mut ctx = CallbackContextPtr::from(ctx, self.arena);
 
