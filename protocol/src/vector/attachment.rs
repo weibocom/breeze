@@ -268,8 +268,10 @@ impl RetrieveAttach {
         self.body.is_empty()
     }
 
-    pub fn attach_header(&mut self, header: Vec<u8>) {
-        self.header = header;
+    // pub fn attach_header(&mut self, header: Vec<u8>) {
+    pub fn swap_header_data(&mut self, header: &mut Vec<u8>) {
+        // self.header = header;
+        std::mem::swap(&mut self.header, header);
     }
     #[inline]
     pub fn attach_body(&mut self, body_data: Vec<u8>, rows: u16, columns: u16) {
@@ -296,8 +298,9 @@ impl RetrieveAttach {
     // 约定：si返回结果的结构： uid、date、count顺序排列
     #[inline]
     pub fn attach_si(&mut self, response: &Command) -> bool {
-        let rows = response.header.rows;
-        let cols = response.header.columns;
+        let header = response.header.as_ref().expect("rsp si");
+        let rows = header.rows;
+        let cols = header.columns;
         debug_assert_eq!(cols, 3);
         self.si.reserve(rows as usize);
         let data = Packet::from(***response);

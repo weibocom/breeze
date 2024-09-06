@@ -151,7 +151,8 @@ pub trait RequestProcessor {
 // TODO Command实质就是response，考虑直接用response？ fishermen
 pub struct Command {
     ok: bool,
-    pub(crate) header: ResponseHeader,
+    // header 只对部分请求有效，改为option
+    pub(crate) header: Option<ResponseHeader>,
     count: u32,
     cmd: MemGuard,
 }
@@ -170,7 +171,7 @@ impl Command {
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
         Self {
             ok,
-            header: Default::default(),
+            header: None,
             count: 0,
             cmd,
         }
@@ -180,7 +181,7 @@ impl Command {
         let count = header.rows as u32;
         Self {
             ok,
-            header,
+            header: Some(header),
             count,
             cmd: body,
         }

@@ -254,6 +254,8 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> protocol::Req
         ));
         let mut ctx = CallbackContextPtr::from(ctx, self.arena);
 
+        log::info!("+++ will send req");
+
         // pendding 会move走ctx，所以提前把req给封装好
         let mut req: Request = ctx.build_request();
         self.pending.push_back(ctx);
