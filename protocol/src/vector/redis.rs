@@ -1,14 +1,15 @@
 use super::{command::get_cfg, flager::KvFlager, *};
-
-use crate::{Flag, Packet, Result};
+use crate::{HashedCommand, Packet, Result};
 use ds::RingSlice;
 
 pub(crate) const FIELD_BYTES: &'static [u8] = b"FIELD";
+
 pub(crate) const KVECTOR_SEPARATOR: u8 = b',';
 
 /// 根据parse的结果，此处进一步获得kvector的detail/具体字段信息，以便进行sql构建
-pub fn parse_vector_detail(cmd: RingSlice, flag: &Flag) -> crate::Result<VectorCmd> {
-    let data = Packet::from(cmd);
+pub fn parse_vector_detail(cmd: &HashedCommand) -> crate::Result<VectorCmd> {
+    let data = Packet::from(cmd.sub_slice(0, cmd.len()));
+    let flag = cmd.flag();
 
     let mut vcmd: VectorCmd = Default::default();
     vcmd.cmd = get_cfg(flag.op_code())?.cmd_type;

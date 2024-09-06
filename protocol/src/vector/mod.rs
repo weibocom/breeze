@@ -1,4 +1,3 @@
-pub mod attachment;
 mod command;
 pub(crate) mod error;
 pub mod flager;
@@ -10,18 +9,15 @@ mod reqpacket;
 mod rsppacket;
 
 use std::fmt::Write;
-use std::mem;
 
 use crate::{
-    Attachment, Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol,
-    RequestProcessor, Result, Stream, Writer,
+    Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
+    Result, Stream, Writer,
 };
 use chrono::NaiveDate;
 use ds::RingSlice;
 use sharding::hash::Hash;
 
-use self::attachment::VecAttach;
-use self::packet::RedisPack;
 use self::reqpacket::RequestPacket;
 use self::rsppacket::ResponsePacket;
 use crate::kv::client::Client;
@@ -121,34 +117,13 @@ impl Protocol for Vector {
                 w.write("-ERR ".as_bytes())?;
                 w.write_slice(response, 0)?; // mysql返回的错误信息
                 w.write("\r\n".as_bytes())?;
+                return Ok(());
             } else {
-                if ctx.attachment().is_some() {
-                    // 有attachment: 组装rsp: header(vec[0]) + *body_tokens + vec[1..]
-                    let attach = VecAttach::attach(ctx.attachment().unwrap());
-                    if attach.body_token_count() > 0 {
-                        w.write(attach.header())?;
-                        w.write(format!("*{}\r\n", attach.body_token_count()).as_bytes())?;
-                        for b in attach.body() {
-                            w.write(b.as_slice())?;
-                        }
-                    } else {
-                        // 返回空
-                        w.write("$-1\r\n".as_bytes())?;
-                    }
-                } else {
-                    // 无attachment: response已封装为redis协议。正常响应有三种：
-                    // 1. 只返回影响的行数
-                    // 2. 一行或多行数据
-                    // 3. 结果为空
-                    if response.header.rows > 0 {
-                        w.write(response.header.header.as_ref())?;
-                        w.write(
-                            format!("*{}\r\n", response.header.rows * response.header.columns)
-                                .as_bytes(),
-                        )?;
-                    }
-                    w.write_slice(response, 0)?; // value
-                }
+                // response已封装为redis协议。正常响应有三种：
+                // 1. 只返回影响的行数
+                // 2. 一行或多行数据
+                // 3. 结果为空
+                w.write_slice(response, 0)?; // value
             }
             return Ok(());
         }
@@ -173,42 +148,6 @@ impl Protocol for Vector {
         w.write(response)?;
         log::debug!("+++ send to client padding {:?}", ctx.request());
         Ok(())
-    }
-
-    // 将中间响应放到attachment中，方便后续继续查询
-    // 先收集si信息，再收集body
-    // 返回值：是否需要继续查询
-    #[inline]
-    fn update_attachment(&self, attachment: &mut Attachment, response: &mut Command) -> bool {
-        assert!(response.ok());
-        let attach = VecAttach::attach_mut(attachment);
-        //收到响应就算ok，响应有问题也不会发送到topo了
-        attach.rsp_ok = true;
-
-        if attach.is_empty() {
-            // TODO 先打通，此处的内存操作需要考虑优化 fishermen
-            let mut header_data = Vec::new();
-            let header = &mut response.header;
-            mem::swap(&mut header_data, &mut header.header);
-            attach.attach_header(header_data);
-        }
-
-        // TODO 先打通，此处的内存操作需要考虑优化 fishermen
-        match attach.has_si() {
-            true => {
-                if response.header.rows > 0 {
-                    let header = &response.header;
-                    attach.attach_body(response.data().0.to_vec(), header.rows, header.columns);
-                }
-                attach.left_count == 0
-            }
-            // 按si解析响应: 未成功获取有效si信息或者解析si失败，并终止后续请求
-            false => response.count() == 0 || !attach.attach_si(response),
-        }
-    }
-    #[inline]
-    fn drop_attach(&self, att: Attachment) {
-        let _ = VecAttach::from(att);
     }
 }
 
@@ -274,11 +213,41 @@ impl Vector {
             Ok(cmd) => Ok(cmd),
             Err(crate::kv::error::Error::UnhandleResponseError(emsg)) => {
                 // 对于UnhandleResponseError，需要构建rsp，发给client
-                let cmd = rsp_packet.build_final_rsp_cmd(false, RedisPack::with_simple(emsg));
+                let cmd = rsp_packet.build_final_rsp_cmd(false, emsg);
                 Ok(cmd)
             }
             Err(e) => Err(e.into()),
         }
+
+        // let meta = match rsp_packet.parse_result_set_meta() {
+        //     Ok(meta) => meta,
+        //     Err(crate::kv::error::Error::UnhandleResponseError(emsg)) => {
+        //         // 对于UnhandleResponseError，需要构建rsp，发给client
+        //         let cmd = rsp_packet.build_final_rsp_cmd(false, emsg);
+        //         return Ok(cmd);
+        //     }
+        //     Err(e) => return Err(e.into()),
+        // };
+
+        // // 如果是只有meta的ok packet，直接返回影响的列数，如insert/delete/update
+        // if let Or::B(ok) = meta {
+        //     let affected = ok.affected_rows();
+        //     let cmd = rsp_packet.build_final_affected_rows_rsp_cmd(affected);
+        //     return Ok(cmd);
+        // }
+
+        // // 解析meta后面的rows，返回列记录，如select
+        // // 有可能多行数据，直接build成
+        // let mut query_result: QueryResult<Text, S> = QueryResult::new(rsp_packet, meta);
+        // match query_result.parse_rows_to_cmd() {
+        //     Ok(cmd) => Ok(cmd),
+        //     Err(crate::kv::error::Error::UnhandleResponseError(emsg)) => {
+        //         // 对于UnhandleResponseError，需要构建rsp，发给client
+        //         let cmd = query_result.build_final_rsp_cmd(false, emsg);
+        //         Ok(cmd)
+        //     }
+        //     Err(e) => Err(e.into()),
+        // }
     }
 }
 
@@ -302,8 +271,6 @@ pub enum Opcode {}
 pub(crate) const COND_ORDER: &[u8] = b"ORDER";
 pub(crate) const COND_LIMIT: &[u8] = b"LIMIT";
 pub(crate) const COND_GROUP: &[u8] = b"GROUP";
-
-const DEFAULT_LIMIT: usize = 15;
 
 #[derive(Debug, Clone, Default)]
 pub struct Condition {
@@ -359,16 +326,6 @@ pub struct VectorCmd {
     pub group_by: GroupBy,
 }
 
-impl VectorCmd {
-    #[inline(always)]
-    pub fn limit(&self) -> usize {
-        match self.limit.limit.try_str_num(..) {
-            Some(limit) => limit,
-            None => DEFAULT_LIMIT,
-        }
-    }
-}
-
 /// field 字段的值，对于‘field’关键字，值是｜分隔的field names，否则就是二进制value
 #[derive(Debug, Clone)]
 pub enum FieldVal {
@@ -418,7 +375,4 @@ pub trait Strategy {
     //todo 通过代理类型实现
     fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_>;
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64);
-    fn write_si_database_table(&self, buf: &mut impl Write, hash: i64);
-    fn batch(&self, limit: u64, vcmd: &VectorCmd) -> u64;
-    fn si_cols(&self) -> &[String];
 }

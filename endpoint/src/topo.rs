@@ -36,7 +36,6 @@ procs::topology_dispatcher! {
 
     pub trait Topology : Endpoint + Hash{
         fn exp_sec(&self) -> u32 {86400}
-        fn has_attach(&self) -> bool {false}
     } => where P:Protocol, E:Endpoint<Item = R>, R:Request, Topologies<E, P>: Endpoint
 
     trait Inited {
