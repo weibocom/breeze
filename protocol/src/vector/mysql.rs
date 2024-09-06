@@ -157,12 +157,12 @@ impl<'a> Display for UpdateFields<'a> {
     }
 }
 
-struct KeysAndCondsAndOrderAndLimit<'a, S>(&'a S, &'a VectorCmd, u64);
+struct KeysAndCondsAndOrderAndLimit<'a, S>(&'a S, &'a VectorCmd);
 impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self(
             strategy,
-            vcmd @ VectorCmd {
+            VectorCmd {
                 cmd: _,
                 keys,
                 fields: _,
@@ -171,7 +171,6 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
                 limit,
                 group_by,
             },
-            extra,
         ) = self;
         for (i, key) in (&mut strategy.condition_keys()).enumerate() {
             if let Some(key) = key {
@@ -196,10 +195,7 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
                 VRingSlice(&order.order)
             );
         }
-        let strategy_limit = strategy.batch(extra, vcmd);
-        if strategy_limit > 0 {
-            let _ = write!(f, " limit {}", strategy.batch(extra, vcmd),);
-        } else if limit.offset.len() != 0 {
+        if limit.offset.len() != 0 {
             let _ = write!(
                 f,
                 " limit {} offset {}",
@@ -216,17 +212,10 @@ pub struct SqlBuilder<'a, S> {
     hash: i64,
     date: NaiveDate,
     strategy: &'a S,
-    limit: u64,
 }
 
 impl<'a, S: Strategy> SqlBuilder<'a, S> {
-    pub fn new(
-        vcmd: &'a VectorCmd,
-        hash: i64,
-        date: NaiveDate,
-        strategy: &'a S,
-        limit: u64,
-    ) -> Result<Self> {
+    pub fn new(vcmd: &'a VectorCmd, hash: i64, date: NaiveDate, strategy: &'a S) -> Result<Self> {
         if vcmd.keys.len() != strategy.keys().len() {
             Err(Error::RequestProtocolInvalid)
         } else {
@@ -235,7 +224,6 @@ impl<'a, S: Strategy> SqlBuilder<'a, S> {
                 hash,
                 date,
                 strategy,
-                limit,
             })
         }
     }
@@ -292,6 +280,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
     }
 
     fn write_sql(&self, buf: &mut impl Write) {
+        // let cmd_type = vector::get_cmd_type(self.op).unwrap_or(vector::CommandType::Unknown);
         match self.vcmd.cmd {
             CommandType::VRange | CommandType::VGet => {
                 let _ = write!(
@@ -299,7 +288,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     "select {} from {} where {}",
                     Select(self.vcmd.fields.get(0)),
                     Table(self.strategy, &self.date, self.hash),
-                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
+                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd),
                 );
             }
             CommandType::VCard => {
@@ -307,7 +296,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     buf,
                     "select count(*) from {} where {}",
                     Table(self.strategy, &self.date, self.hash),
-                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
+                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd),
                 );
             }
             CommandType::VAdd => {
@@ -325,7 +314,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     "update {} set {} where {}",
                     Table(self.strategy, &self.date, self.hash),
                     UpdateFields(&self.vcmd.fields),
-                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
+                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd),
                 );
             }
             CommandType::VDel => {
@@ -333,7 +322,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     buf,
                     "delete from {} where {}",
                     Table(self.strategy, &self.date, self.hash),
-                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
+                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd),
                 );
             }
             _ => {
@@ -341,112 +330,5 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                 panic!("not support cmd_type:{:?}", self.vcmd.cmd);
             }
         }
-    }
-}
-
-pub struct SiSqlBuilder<'a, S> {
-    vcmd: &'a VectorCmd,
-    hash: i64,
-    strategy: &'a S,
-}
-
-impl<'a, S: Strategy> SiSqlBuilder<'a, S> {
-    pub fn new(vcmd: &'a VectorCmd, hash: i64, strategy: &'a S) -> Result<Self> {
-        if vcmd.keys.len() != strategy.keys().len() {
-            Err(Error::RequestProtocolInvalid)
-        } else {
-            Ok(Self {
-                vcmd,
-                hash,
-                strategy,
-            })
-        }
-    }
-}
-
-impl<'a, S> MysqlBinary for SiSqlBuilder<'a, S> {
-    fn mysql_cmd(&self) -> Command {
-        Command::COM_QUERY
-    }
-}
-
-impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
-    fn len(&self) -> usize {
-        128
-    }
-
-    // (1) 根据object_type查用户的si数据
-    // select uid, start_date as stat_date, sum(count) as count from $db$.$tb$ where uid=? and object_type in(?) group by uid, start_date order by start_date desc
-
-    // (2) 查用户所有的si数据
-    // select uid, start_date as stat_date, sum(count) as count from $db$.$tb$ where uid=? group by start_date order by start_date desc
-
-    // select date，count字段名，
-    // 条件需要key，字段名
-    fn write_sql(&self, buf: &mut impl Write) {
-        match self.vcmd.cmd {
-            CommandType::VRange => {
-                let _ = write!(
-                    buf,
-                    "select {} from {} where {}",
-                    SiSelect(self.strategy.keys(), self.strategy.si_cols()),
-                    SiTable(self.strategy, self.hash),
-                    SiKeysAndCondsAndOrder(self.strategy, &self.vcmd),
-                );
-            }
-            _ => {
-                //校验应该在parser_req出
-                panic!("not support cmd_type:{:?}", self.vcmd.cmd);
-            }
-        }
-    }
-}
-
-//keys, cols
-struct SiSelect<'a>(&'a [String], &'a [String]);
-impl<'a> Display for SiSelect<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // select key, start_date, sum(count)
-        write!(
-            f,
-            "{},{},sum({})",
-            self.0[0],
-            self.1[0],
-            self.1.last().unwrap()
-        )
-    }
-}
-
-struct SiKeysAndCondsAndOrder<'a, S>(&'a S, &'a VectorCmd);
-impl<'a, S: Strategy> Display for SiKeysAndCondsAndOrder<'a, S> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let &Self(strategy, VectorCmd { keys, wheres, .. }) = self;
-        let key_name = &strategy.keys()[0];
-        let cols = strategy.si_cols();
-        let _ = write!(f, "`{}`={}", key_name, Val(&keys[0]));
-        for w in wheres {
-            //条件中和si相同的列写入条件
-            for col in cols {
-                if w.field.equal(col.as_bytes()) {
-                    let _ = write!(f, " and {}", ConditionDisplay(w));
-                    break;
-                }
-            }
-        }
-        //按key和日期group，按日期倒叙排
-        let _ = write!(
-            f,
-            " group by {},{} order by {} desc",
-            key_name, cols[0], cols[0]
-        );
-        Ok(())
-    }
-}
-
-struct SiTable<'a, S>(&'a S, i64);
-impl<'a, S: Strategy> Display for SiTable<'a, S> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.write_si_database_table(f, self.1);
-        Ok(())
     }
 }
