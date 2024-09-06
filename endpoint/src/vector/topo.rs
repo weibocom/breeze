@@ -1,13 +1,11 @@
 use std::collections::HashMap;
 
-use chrono::{Datelike, NaiveDate};
+use chrono::Datelike;
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
 use ds::MemGuard;
 use protocol::kv::{ContextStatus, MysqlBuilder};
-use protocol::vector::attachment::{VAttach, VecAttach};
-use protocol::vector::redis::parse_vector_detail;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
@@ -17,7 +15,7 @@ use sharding::hash::{Hash, HashKey};
 use crate::dns::DnsConfig;
 use crate::Timeout;
 use crate::{Endpoint, Topology};
-use protocol::vector::mysql::{SiSqlBuilder, SqlBuilder};
+use protocol::vector::mysql::SqlBuilder;
 
 use super::config::VectorNamespace;
 use super::strategy::Strategist;
@@ -27,7 +25,6 @@ use crate::shards::Shard;
 #[derive(Clone)]
 pub struct VectorService<E, P> {
     shards: Shards<E>,
-    si_shard: Vec<Shard<E>>,
     strategist: Strategist,
     parser: P,
     cfg: Box<DnsConfig<VectorNamespace>>,
@@ -39,7 +36,6 @@ impl<E, P> From<P> for VectorService<E, P> {
         Self {
             parser,
             shards: Default::default(),
-            si_shard: Default::default(),
             strategist: Default::default(),
             cfg: Default::default(),
         }
@@ -63,150 +59,8 @@ where
     Req: Request,
     P: Protocol,
 {
-    fn has_attach(&self) -> bool {
-        self.strategist.more()
-    }
 }
 
-impl<E, Req, P> VectorService<E, P>
-where
-    E: Endpoint<Item = Req>,
-    Req: Request,
-    P: Protocol,
-{
-    fn get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
-        let (year, shard_idx) = if req.ctx_mut().runs == 0 {
-            let vcmd = parse_vector_detail(****req, req.flag())?;
-            //定位年库
-            let date = self.strategist.get_date(&vcmd.keys)?;
-            let year = date.year() as u16;
-
-            let shard_idx = self.shard_idx(req.hash());
-            req.ctx_mut().year = year;
-            req.ctx_mut().shard_idx = shard_idx as u16;
-
-            let vector_builder = SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist, 0)?;
-            let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
-            req.reshape(MemGuard::from_vec(cmd));
-
-            (year, shard_idx)
-        } else {
-            (req.ctx_mut().year, req.ctx_mut().shard_idx as usize)
-        };
-
-        let shards = self.shards.get(year);
-        let shard = shards.get(shard_idx).ok_or(protocol::Error::TopInvalid)?;
-        log::debug!(
-            "+++ mysql {} send {} year {} shards {:?} => {:?}",
-            self.cfg.service,
-            shard_idx,
-            year,
-            shards,
-            req
-        );
-        Ok(shard)
-    }
-    fn more_get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
-        req.attachment_mut()
-            .get_or_insert(VecAttach::default().to_attach());
-        //分别代表请求的轮次和每轮重试次数
-        let (round, runs) = (req.attach().round, req.ctx_mut().runs);
-        //runs == 0 表示第一轮第一次请求
-        let shard = if runs == 0 || req.attach().rsp_ok {
-            let shard = if runs == 0 {
-                //请求si表
-                assert_eq!(req.attach().left_count, 0);
-                assert_eq!(*req.context_mut(), 0);
-                let vcmd = parse_vector_detail(****req, req.flag())?;
-                if req.operation().is_retrival() {
-                    req.retry_on_rsp_notok(true);
-                    let limit = vcmd.limit();
-                    assert!(limit > 0, "{limit}");
-                    //需要在buildsql之前设置
-                    req.attach_mut().init(limit as u16);
-                }
-
-                let si_sql = SiSqlBuilder::new(&vcmd, req.hash(), &self.strategist)?;
-                let cmd = MysqlBuilder::build_packets_for_vector(si_sql)?;
-                req.reshape(MemGuard::from_vec(cmd));
-
-                let si_shard_idx = self.strategist.si_distribution().index(req.hash());
-                req.ctx_mut().shard_idx = si_shard_idx as u16;
-                req.attach_mut().vcmd = vcmd;
-                req.set_last(false);
-                &self.si_shard[si_shard_idx]
-            } else {
-                //根据round获取si
-                let si_items = req.attach().si();
-                assert!(si_items.len() > 0, "si_items.len() = 0");
-                assert!(
-                    round <= si_items.len() as u16,
-                    "round = {round}, si_items.len() = {}",
-                    si_items.len()
-                );
-                let si_item = &si_items[(round - 1) as usize];
-
-                let year = si_item.date.year as u16 + 2000;
-                //构建sql
-                let limit = req.attach().left_count.min(si_item.count);
-                assert!(si_item.count > 0, "{}", si_item.count);
-                assert!(req.attach().left_count > 0, "{}", req.attach().left_count);
-
-                let Some(date) = NaiveDate::from_ymd_opt(year.into(), si_item.date.month.into(), 1)
-                else {
-                    return Err(protocol::Error::ResponseInvalidMagic);
-                };
-                let vector_builder = SqlBuilder::new(
-                    &req.attach().vcmd,
-                    req.hash(),
-                    date,
-                    &self.strategist,
-                    limit as u64,
-                )?;
-                let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
-
-                //更新轮次信息
-                if round == si_items.len() as u16 {
-                    req.set_last(true);
-                }
-
-                req.reshape(MemGuard::from_vec(cmd));
-                //获取shard
-                let shard_idx = self.shard_idx(req.hash());
-                req.ctx_mut().year = year;
-                req.ctx_mut().shard_idx = shard_idx as u16;
-                let shards = self.shards.get(year);
-                shards.get(shard_idx).ok_or(protocol::Error::TopInvalid)?
-            };
-
-            //重新发送后，视作新的请求，重置响应和runs
-            req.attach_mut().rsp_ok = false;
-            req.attach_mut().round += 1;
-            req.ctx_mut().runs = 0;
-            req.set_fitst_try();
-            shard
-        } else {
-            if round - 1 == 0 {
-                //上一轮si表重试
-                &self.si_shard[req.ctx_mut().shard_idx as usize]
-            } else {
-                let (year, shard_idx) = (req.ctx_mut().year, req.ctx_mut().shard_idx);
-                let shards = self.shards.get(year);
-                shards
-                    .get(shard_idx as usize)
-                    .ok_or(protocol::Error::TopInvalid)?
-            }
-        };
-
-        log::debug!(
-            "+++ mysql {} shards {:?} => {:?}",
-            self.cfg.service,
-            shard,
-            req
-        );
-        Ok(shard)
-    }
-}
 impl<E, Req, P> Endpoint for VectorService<E, P>
 where
     E: Endpoint<Item = Req>,
@@ -216,11 +70,48 @@ where
     type Item = Req;
 
     fn send(&self, mut req: Self::Item) {
-        let shard = if !self.strategist.more() {
-            self.get_shard(&mut req)
-        } else {
-            self.more_get_shard(&mut req)
-        };
+        let shard = (|| -> Result<&Shard<E>, protocol::Error> {
+            let (year, shard_idx) = if req.ctx_mut().runs == 0 {
+                let vcmd = protocol::vector::redis::parse_vector_detail(&req)?;
+                //定位年库
+                let date = self.strategist.get_date(&vcmd.keys)?;
+                let year = date.year() as u16;
+
+                let shard_idx = self.shard_idx(req.hash());
+                req.ctx_mut().year = year;
+                req.ctx_mut().shard_idx = shard_idx as u16;
+
+                let vector_builder = SqlBuilder::new(&vcmd, req.hash(), date, &self.strategist)?;
+                let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
+                req.reshape(MemGuard::from_vec(cmd));
+
+                (year, shard_idx)
+            } else {
+                (req.ctx_mut().year, req.ctx_mut().shard_idx as usize)
+            };
+
+            let shards = self.shards.get(year);
+            if shards.len() == 0 {
+                return Err(protocol::Error::TopInvalid);
+            }
+            debug_assert!(
+                shard_idx < shards.len(),
+                "mysql: {}/{} req:{:?}",
+                shard_idx,
+                shards.len(),
+                req
+            );
+            let shard = unsafe { shards.get_unchecked(shard_idx) };
+            log::debug!(
+                "+++ mysql {} send {} year {} shards {:?} => {:?}",
+                self.cfg.service,
+                shard_idx,
+                year,
+                shards,
+                req
+            );
+            Ok(shard)
+        })();
         let shard = match shard {
             Ok(shard) => shard,
             Err(e) => {
@@ -228,7 +119,6 @@ where
                     protocol::Error::TopInvalid => ContextStatus::TopInvalid,
                     _ => ContextStatus::ReqInvalid,
                 };
-                req.try_next(false);
                 req.on_err(e);
                 return;
             }
@@ -272,18 +162,14 @@ where
     E: Endpoint,
 {
     fn need_load(&self) -> bool {
-        (self.shards.len() + self.si_shard.len()) != self.cfg.shards_url.len()
-            || self.cfg.need_load()
+        self.shards.len() != self.cfg.shards_url.len() || self.cfg.need_load()
     }
     fn load(&mut self) -> bool {
         self.cfg.load_guard().check_load(|| self.load_inner())
     }
     fn update(&mut self, namespace: &str, cfg: &str) {
         if let Some(ns) = VectorNamespace::try_from(cfg) {
-            let Some(strategist) = Strategist::try_from(&ns) else {
-                return;
-            };
-            self.strategist = strategist;
+            self.strategist = Strategist::try_from(&ns);
             self.cfg.update(namespace, ns);
         }
     }
@@ -411,112 +297,11 @@ where
             }
             self.shards.push((interval, shards_per_interval));
         }
-        if !self.load_inner_si() {
-            return false;
-        }
-        assert_eq!(
-            self.shards.len() + self.si_shard.len(),
-            self.cfg.shards_url.len()
-        );
-
+        assert_eq!(self.shards.len(), self.cfg.shards_url.len());
         log::info!("{} load complete. dropping:{:?}", self.cfg.service, {
             old.retain(|_k, v| v.len() > 0);
             old.keys()
         });
-        true
-    }
-
-    #[inline]
-    fn load_inner_si(&mut self) -> bool {
-        // 所有的ip要都能解析出主从域名
-        let mut addrs = Vec::with_capacity(self.cfg.si_backends.len());
-        for shard in &self.cfg.si_backends {
-            let shard: Vec<&str> = shard.split(",").collect();
-            if shard.len() < 2 {
-                log::warn!("{} si both master and slave required.", self.cfg.service);
-                return false;
-            }
-            let master_url = &shard[0];
-            let mut master = String::new();
-            dns::lookup_ips(master_url.host(), |ips| {
-                if ips.len() > 0 {
-                    master = ips[0].to_string() + ":" + master_url.port();
-                }
-            });
-            let mut slaves = Vec::with_capacity(8);
-            for url_port in &shard[1..] {
-                let url = url_port.host();
-                let port = url_port.port();
-                use ds::vec::Add;
-                dns::lookup_ips(url, |ips| {
-                    for ip in ips {
-                        slaves.add(ip.to_string() + ":" + port);
-                    }
-                });
-            }
-            if master.len() == 0 || slaves.len() == 0 {
-                log::warn!(
-                    "master:({}=>{}) or slave ({:?}=>{:?}) not looked up",
-                    master_url,
-                    master,
-                    &shard[1..],
-                    slaves
-                );
-                return false;
-            }
-            addrs.push((master, slaves));
-        }
-
-        // 到这之后，所有的shard都能解析出ip
-        let mut old = HashMap::with_capacity(addrs.len());
-        self.si_shard.split_off(0).into_iter().for_each(|shard| {
-            old.entry(shard.master.addr().to_string())
-                .or_insert(Vec::new())
-                .push(shard.master);
-            for endpoint in shard.slaves.into_inner() {
-                let addr = endpoint.addr().to_string();
-                // 一个ip可能存在于多个域名中。
-                old.entry(addr).or_insert(Vec::new()).push(endpoint);
-            }
-        });
-
-        // 遍历所有的shards_url
-        for (master_addr, slaves) in addrs {
-            assert_ne!(master_addr.len(), 0);
-            assert_ne!(slaves.len(), 0);
-            // 用户名和密码
-            let res_option = ResOption {
-                token: self.cfg.basic.si_password.clone(),
-                username: self.cfg.basic.si_user.clone(),
-            };
-            let master = self.take_or_build(
-                &mut old,
-                &master_addr,
-                self.cfg.timeout_master(),
-                res_option.clone(),
-            );
-            // slave
-            let mut replicas = Vec::with_capacity(8);
-            for addr in slaves {
-                let slave = self.take_or_build(
-                    &mut old,
-                    &addr,
-                    self.cfg.timeout_slave(),
-                    res_option.clone(),
-                );
-                replicas.push(slave);
-            }
-
-            use crate::PerformanceTuning;
-            let shard = Shard::selector(
-                self.cfg.basic.selector.tuning_mode(),
-                master,
-                replicas,
-                self.cfg.basic.region_enabled,
-            );
-            self.si_shard.push(shard);
-        }
-
         true
     }
 }
@@ -529,7 +314,7 @@ where
     fn inited(&self) -> bool {
         // 每一个分片都有初始, 并且至少有一主一从。
         self.shards.len() > 0
-            && (self.shards.len() + self.si_shard.len()) == self.cfg.shards_url.len()
+            && self.shards.len() == self.cfg.shards_url.len()
             && self.shards.inited()
     }
 }

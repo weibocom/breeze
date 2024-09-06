@@ -85,9 +85,6 @@ impl RingSlice {
     #[inline]
     pub fn try_str_num(&self, r: impl Range) -> Option<usize> {
         let (start, end) = r.range(self);
-        if start == end {
-            return None;
-        }
         let mut num = 0usize;
         for i in start..end {
             if !self[i].is_ascii_digit() {

@@ -9,7 +9,7 @@ use crate::msgque::MsgQue;
 use crate::redis::Redis;
 use crate::uuid::Uuid;
 use crate::vector::Vector;
-use crate::{Attachment, Error, Flag, OpCode, Operation, ResponseHeader, Result, Stream, Writer};
+use crate::{Error, Flag, OpCode, Operation, Result, Stream, Writer};
 
 #[derive(Clone)]
 #[enum_dispatch(Proto)]
@@ -128,17 +128,6 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn max_tries(&self, _req_op: Operation) -> u8 {
         1_u8
     }
-
-    #[inline]
-    fn update_attachment(&self, attachment: &mut Attachment, response: &mut Command) -> bool {
-        // 默认情况下，attachment应该为空
-        assert!(false, "{:?} {response}", attachment);
-        false
-    }
-    #[inline]
-    fn drop_attach(&self, _att: Attachment) {
-        panic!("unreachable");
-    }
 }
 
 pub trait RequestProcessor {
@@ -150,11 +139,8 @@ pub trait RequestProcessor {
     fn process(&mut self, req: HashedCommand, last: bool);
 }
 
-// TODO Command实质就是response，考虑直接用response？ fishermen
 pub struct Command {
     ok: bool,
-    pub(crate) header: ResponseHeader,
-    count: u32,
     cmd: MemGuard,
 }
 
@@ -170,42 +156,14 @@ pub struct HashedCommand {
 impl Command {
     #[inline]
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
-        Self {
-            ok,
-            header: Default::default(),
-            count: 0,
-            cmd,
-        }
+        Self { ok, cmd }
     }
-    #[inline]
-    pub fn with_assemble_pack(ok: bool, header: ResponseHeader, body: ds::MemGuard) -> Self {
-        let count = header.rows as u32;
-        Self {
-            ok,
-            header,
-            count,
-            cmd: body,
-        }
-    }
-
     pub fn from_ok(cmd: ds::MemGuard) -> Self {
         Self::from(true, cmd)
     }
     #[inline]
     pub fn ok(&self) -> bool {
         self.ok
-    }
-    #[inline]
-
-    pub fn update_ok(&mut self, ok: bool) {
-        self.ok = ok;
-    }
-    pub fn count(&self) -> u32 {
-        self.count
-    }
-    #[inline]
-    pub fn set_count(&mut self, n: u32) {
-        self.count = n;
     }
 }
 impl std::ops::Deref for Command {
@@ -292,13 +250,14 @@ impl HashedCommand {
     }
     #[inline]
     pub fn reshape(&mut self, mut dest_cmd: MemGuard) {
-        if self.origin_cmd.is_none() {
-            // 将dest cmd设给cmd，并将换出的cmd保留在origin_cmd中
-            mem::swap(&mut self.cmd, &mut dest_cmd);
-            self.origin_cmd = Some(dest_cmd);
-        } else {
-            self.cmd = dest_cmd;
-        }
+        assert!(
+            self.origin_cmd.is_none(),
+            "origin cmd should be none: {:?}",
+            self.origin_cmd
+        );
+        // 将dest cmd设给cmd，并将换出的cmd保留在origin_cmd中
+        mem::swap(&mut self.cmd, &mut dest_cmd);
+        self.origin_cmd = Some(dest_cmd);
     }
 }
 
@@ -335,7 +294,6 @@ pub trait Commander<M: Metric<I>, I: MetricItem> {
     fn request_shard(&self) -> usize;
     fn metric(&self) -> &M;
     fn ctx(&self) -> u64;
-    fn attachment(&self) -> Option<&Attachment>;
 }
 
 pub enum MetricName {
