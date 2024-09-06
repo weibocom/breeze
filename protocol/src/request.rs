@@ -1,6 +1,4 @@
-use crate::{
-    callback::CallbackContext, Attachment, BackendQuota, Command, Context, Error, HashedCommand,
-};
+use crate::{callback::CallbackContext, BackendQuota, Command, Context, Error, HashedCommand};
 use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,
@@ -28,8 +26,8 @@ impl crate::Request for Request {
         }
     }
     #[inline]
-    fn on_complete<P: crate::Proto>(self, parser: &P, resp: Command) {
-        self.ctx().on_complete(parser, resp);
+    fn on_complete(self, resp: Command) {
+        self.ctx().on_complete(resp);
     }
     #[inline]
     fn on_err(self, err: Error) {
@@ -58,25 +56,6 @@ impl crate::Request for Request {
     #[inline]
     fn quota(&mut self, quota: BackendQuota) {
         self.ctx().quota(quota);
-    }
-    #[inline]
-    fn attachment(&self) -> Option<&Attachment> {
-        self.ctx().attachment()
-    }
-    #[inline]
-    fn attachment_mut(&mut self) -> &mut Option<crate::Attachment> {
-        self.ctx().attachment_mut()
-    }
-    #[inline]
-    fn set_max_tries(&mut self, max_tries: u8) {
-        self.ctx().set_max_tries(max_tries);
-    }
-    #[inline]
-    fn set_fitst_try(&mut self) {
-        self.ctx().set_fitst_try();
-    }
-    fn set_last(&mut self, last: bool) {
-        self.ctx().set_last(last);
     }
 }
 impl Request {

@@ -77,10 +77,6 @@ impl Commander<TestMetric, TestMetricItem> for TestCtx {
     fn ctx(&self) -> u64 {
         todo!()
     }
-
-    fn attachment(&self) -> Option<&protocol::Attachment> {
-        todo!()
-    }
 }
 #[derive(Debug)]
 pub(crate) struct TestStream {

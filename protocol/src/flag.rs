@@ -79,20 +79,38 @@ impl Flag {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct ResponseHeader {
-    pub(crate) header: Vec<u8>,
-    pub(crate) rows: u16,    // 包含的响应行数
-    pub(crate) columns: u16, // 每行的响应列数
-}
+// TODO 暂时保留备查，2024.2后再考虑清理 fishermen
+// #[derive(Debug, Clone)]
+// pub enum TryNextType {
+//     NotTryNext = 0,
+//     TryNext = 1,
+//     // 去掉unknow类型，统一逻辑处理，测试稳定后清理，预计2024.1后清理 fishermen
+//     // Unkown = 2,
+// }
 
-impl ResponseHeader {
-    #[inline]
-    pub fn new(header: Vec<u8>, rows: u16, columns: u16) -> Self {
-        ResponseHeader {
-            header,
-            rows,
-            columns,
-        }
-    }
-}
+// // (1) 0: not try next(对add/replace生效);  (2) 1: try next;  (3) 2:unkown (仅对set生效，注意提前考虑cas)
+// impl From<u8> for TryNextType {
+//     fn from(val: u8) -> Self {
+//         match val {
+//             0 => TryNextType::NotTryNext,
+//             1 => TryNextType::TryNext,
+//             // 2 => TryNextType::Unkown,
+//             _ => panic!("unknow try next type"),
+//         }
+//     }
+//     // TODO 暂时保留，线上稳定后清理，预计2024.2之后 fishermen
+//     // pub fn from(val: u8) -> Self {
+//     //     match val {
+//     //         0 => TryNextType::NotTryNext,
+//     //         1 => TryNextType::TryNext,
+//     //         // 2 => TryNextType::Unkown,
+//     //         _ => panic!("unknow try next type"),
+//     //     }
+//     // }
+// }
+
+// impl Default for TryNextType {
+//     fn default() -> Self {
+//         TryNextType::TryNext
+//     }
+// }
