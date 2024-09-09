@@ -116,7 +116,7 @@ where
 
     fn get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
         let (year, shard_idx) = if req.ctx_mut().runs == 0 {
-            let vcmd = parse_vector_detail(****req, req.flag())?;
+            let vcmd = parse_vector_detail(****req, req.flag(), self.strategist.route())?;
             self.strategist.check_vector_cmd(&vcmd)?;
             //定位年库
             let date = self.strategist.get_date(vcmd.cmd, &vcmd.keys)?;
@@ -155,14 +155,14 @@ where
             let shard = if runs == 0 {
                 //请求si表
                 assert_eq!(*req.context_mut(), 0);
-                let vcmd = parse_vector_detail(****req, req.flag())?;
+                let vcmd = parse_vector_detail(****req, req.flag(), self.strategist.route())?;
                 self.strategist.check_vector_cmd(&vcmd)?;
 
                 assert_eq!(req.attachment(), None);
                 let operation = req.operation();
-                let _ = req
-                    .attachment_mut()
-                    .insert(VectorAttach::new(operation, vcmd.limit() as u16).to_attach());
+                let _ = req.attachment_mut().insert(
+                    VectorAttach::new(operation, &vcmd.route, vcmd.limit() as u16).to_attach(),
+                );
                 //上行请求不需要初始化leftcount
                 let date = self.strategist.get_date(vcmd.cmd, &vcmd.keys)?;
                 let si_sql = SiSqlBuilder::new(&vcmd, req.hash(), date, &self.strategist)?;
@@ -427,8 +427,7 @@ where
                     self.cfg.basic.selector.tuning_mode(),
                     master,
                     replicas,
-                    self.cfg.basic.region_enabled,
-                    // false,
+                    false,
                 );
                 shards_per_interval.push(shard);
             }
@@ -452,8 +451,8 @@ where
     #[inline]
     fn load_inner_si(&mut self) -> bool {
         // 所有的ip要都能解析出主从域名
-        let mut addrs = Vec::with_capacity(self.cfg.ext_si_backends.len());
-        for shard in &self.cfg.ext_si_backends {
+        let mut addrs = Vec::with_capacity(self.cfg.si_backends.len());
+        for shard in &self.cfg.si_backends {
             let shard: Vec<&str> = shard.split(",").collect();
             if shard.len() < 2 {
                 log::warn!("{} si both master and slave required.", self.cfg.service);
@@ -509,8 +508,8 @@ where
             assert_ne!(slaves.len(), 0);
             // 用户名和密码
             let res_option = ResOption {
-                token: self.cfg.basic.ext_si.password.clone(),
-                username: self.cfg.basic.ext_si.user.clone(),
+                token: self.cfg.basic.si_password.clone(),
+                username: self.cfg.basic.si_user.clone(),
             };
             let master = self.take_or_build(
                 &mut old,

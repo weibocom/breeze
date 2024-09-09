@@ -13,6 +13,8 @@ use super::VectorCmd;
 pub struct VectorAttach {
     // type
     attach_type: AttachType,
+    // 请求执行的路线，eg：timeline/main，si，aggretation
+    route: Route,
     // attach basic fields
     pub vcmd: VectorCmd,
     // 查询的轮次，0代表si
@@ -79,6 +81,43 @@ pub enum AttachType {
     Store = 2,
 }
 
+#[derive(Debug, Clone)]
+#[repr(C)]
+pub enum Route {
+    Main = 0,
+    Si = 1,
+    Aggregation = 2,
+}
+
+impl Default for Route {
+    fn default() -> Self {
+        Route::Main
+    }
+}
+
+impl Route {
+    /// parse route from string，目前只有 timeline、si两种
+    #[inline(always)]
+    pub fn parse(route_str: &RingSlice) -> Option<Self> {
+        if route_str.start_ignore_case(0, "timeline".as_bytes()) {
+            Some(Route::Main)
+        } else if route_str.start_ignore_case(0, "si".as_bytes()) {
+            Some(Route::Si)
+        } else {
+            None
+        }
+    }
+
+    /// check是否是aggregation，只有config策略是aggregation时，才可以
+    #[inline(always)]
+    pub fn is_aggregation(&self) -> bool {
+        match self {
+            Route::Aggregation => true,
+            _ => false,
+        }
+    }
+}
+
 impl Default for AttachType {
     fn default() -> Self {
         AttachType::Unknown
@@ -87,10 +126,11 @@ impl Default for AttachType {
 
 impl VectorAttach {
     #[inline(always)]
-    pub fn new(operation: Operation, left_count: u16) -> Self {
+    pub fn new(operation: Operation, route: &Route, left_count: u16) -> Self {
         match operation {
             Operation::Get | Operation::Gets => Self {
                 attach_type: AttachType::Retrieve,
+                route: route.clone(),
                 vcmd: VectorCmd::default(),
                 round: 0,
                 rsp_ok: false,
@@ -98,6 +138,7 @@ impl VectorAttach {
             },
             Operation::Store => Self {
                 attach_type: AttachType::Store,
+                route: route.clone(),
                 vcmd: VectorCmd::default(),
                 round: 0,
                 rsp_ok: false,

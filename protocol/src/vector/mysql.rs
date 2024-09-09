@@ -164,6 +164,7 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
             strategy,
             vcmd @ VectorCmd {
                 cmd: _,
+                route: _,
                 keys,
                 fields: _,
                 wheres,
@@ -259,6 +260,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
         };
         let VectorCmd {
             cmd: _,
+            route: _,
             keys,
             fields,
             wheres,

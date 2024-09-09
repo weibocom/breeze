@@ -7,13 +7,27 @@ pub(crate) const FIELD_BYTES: &'static [u8] = b"FIELD";
 pub(crate) const KVECTOR_SEPARATOR: u8 = b',';
 
 /// 根据parse的结果，此处进一步获得kvector的detail/具体字段信息，以便进行sql构建
-pub fn parse_vector_detail(cmd: RingSlice, flag: &Flag) -> crate::Result<VectorCmd> {
+pub fn parse_vector_detail(
+    cmd: RingSlice,
+    flag: &Flag,
+    route_default: Route,
+) -> crate::Result<VectorCmd> {
     let data = Packet::from(cmd);
 
     let mut vcmd: VectorCmd = Default::default();
     vcmd.cmd = get_cfg(flag.op_code())?.cmd_type;
     // 解析keys
     parse_vector_key(&data, flag.key_pos() as usize, &mut vcmd)?;
+
+    // 解析route
+    if vcmd.keys.len() > 0 {
+        if let Some(route) = Route::parse(&vcmd.keys.last().expect("kvector")) {
+            vcmd.keys.pop();
+            vcmd.route = route;
+        } else {
+            vcmd.route = route_default;
+        }
+    }
 
     // 解析fields
     let field_start = flag.field_pos() as usize;

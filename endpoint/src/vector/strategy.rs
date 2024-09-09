@@ -2,6 +2,7 @@ use std::fmt::Write;
 
 use chrono::NaiveDate;
 use ds::RingSlice;
+use protocol::vector::attachment::Route;
 use protocol::vector::{CommandType, KeysType, Postfix};
 use protocol::Result;
 use sharding::distribution::DBRange;
@@ -40,7 +41,7 @@ impl Strategist {
         Some(match ns.basic.strategy.as_str() {
             "aggregation" => {
                 //至少需要date和count两个字段名，keys至少需要id+time
-                if ns.basic.ext_si.cols.len() < 2 || ns.basic.keys.len() < 2 {
+                if ns.basic.si_cols.len() < 2 || ns.basic.keys.len() < 2 {
                     log::warn!("len si_cols < 2 or len keys < 2");
                     return None;
                 }
@@ -54,12 +55,12 @@ impl Strategist {
                     ns.backends.iter().next().unwrap().1.len() as u32,
                     ns.basic.table_postfix.as_str().try_into().ok()?,
                     ns.basic.keys.clone(),
-                    ns.basic.ext_si.cols.clone(),
-                    ns.basic.ext_si.db_name.clone(),
-                    ns.basic.ext_si.db_count,
-                    ns.basic.ext_si.table_name.clone(),
-                    ns.basic.ext_si.table_count,
-                    ns.ext_si_backends.len() as u32,
+                    ns.basic.si_cols.clone(),
+                    ns.basic.si_db_name.clone(),
+                    ns.basic.si_db_count,
+                    ns.basic.si_table_name.clone(),
+                    ns.basic.si_table_count,
+                    ns.si_backends.len() as u32,
                 ))
             }
             _ => {
@@ -122,6 +123,15 @@ impl Strategist {
         match self {
             Strategist::VectorTime(inner) => inner.check_vector_cmd(vcmd),
             Strategist::Batch(inner) => inner.check_vector_cmd(vcmd),
+        }
+    }
+
+    /// 获得配置的默认route；当配置strategy为aggregation时，默认的route是Aggregation，否则就是Main
+    #[inline]
+    pub(crate) fn route(&self) -> Route {
+        match self {
+            Strategist::Batch(_) => Route::Aggregation,
+            _ => Route::Main,
         }
     }
 
@@ -218,7 +228,13 @@ mod tests {
                 password: Default::default(),
                 user: Default::default(),
                 region_enabled: Default::default(),
-                ext_si: Default::default(),
+                si_db_name: Default::default(),
+                si_table_name: Default::default(),
+                si_db_count: Default::default(),
+                si_table_count: Default::default(),
+                si_user: Default::default(),
+                si_password: Default::default(),
+                si_cols: Default::default(),
             },
             backends_flaten: Default::default(),
             backends: HashMap::from([(
@@ -228,7 +244,7 @@ mod tests {
                     "127.0.0.1:8081,127.0.0.2:8081".into(),
                 ],
             )]),
-            ext_si_backends: Default::default(),
+            si_backends: Default::default(),
         };
         let strategy = Strategist::try_from(&ns).unwrap();
         let mut buf = String::new();
@@ -236,6 +252,7 @@ mod tests {
         // vrange
         let vector_cmd = VectorCmd {
             cmd: CommandType::VRange,
+            route: Route::Main,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -264,6 +281,7 @@ mod tests {
         // vrange 无field
         let vector_cmd = VectorCmd {
             cmd: CommandType::VRange,
+            route: Route::Main,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -290,6 +308,7 @@ mod tests {
         // 复杂vrange
         let vector_cmd = VectorCmd {
             cmd: CommandType::VRange,
+            route: Route::Main,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -338,6 +357,7 @@ mod tests {
         // vcard
         let vector_cmd = VectorCmd {
             cmd: CommandType::VCard,
+            route: Route::Main,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -381,6 +401,7 @@ mod tests {
         //vadd
         let vector_cmd = VectorCmd {
             cmd: CommandType::VAdd,
+            route: Route::Main,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -424,6 +445,7 @@ mod tests {
         //vupdate
         let vector_cmd = VectorCmd {
             cmd: CommandType::VUpdate,
+            route: Route::Main,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -476,6 +498,7 @@ mod tests {
         //vdel
         let vector_cmd = VectorCmd {
             cmd: CommandType::VDel,
+            route: Route::Main,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -519,6 +542,7 @@ mod tests {
         // vget
         let vector_cmd = VectorCmd {
             cmd: CommandType::VGet,
+            route: Route::Main,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -548,6 +572,7 @@ mod tests {
         // vget 无field
         let vector_cmd = VectorCmd {
             cmd: CommandType::VGet,
+            route: Route::Main,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -574,6 +599,7 @@ mod tests {
         // 复杂vget
         let vector_cmd = VectorCmd {
             cmd: CommandType::VGet,
+            route: Route::Main,
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),

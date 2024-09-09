@@ -15,7 +15,7 @@ use crate::{
     Attachment, Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol,
     RequestProcessor, Result, Stream, Writer,
 };
-use attachment::AttachType;
+use attachment::{AttachType, Route};
 use chrono::NaiveDate;
 use ds::RingSlice;
 use sharding::hash::Hash;
@@ -379,6 +379,7 @@ pub type Field = (RingSlice, RingSlice);
 //非迭代版本，代价是内存申请。如果采取迭代版本，需要重复解析一遍，重复解析可以由parser实现，topo调用
 #[derive(Debug, Clone, Default)]
 pub struct VectorCmd {
+    pub route: Route,
     pub cmd: CommandType,
     pub keys: Vec<RingSlice>,
     pub fields: Vec<Field>,
