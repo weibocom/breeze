@@ -25,6 +25,7 @@ use super::Flag;
 use super::Protocol;
 use crate::kv::client::Client;
 use crate::kv::error::Error;
+use crate::vector::attachment::BackendType;
 use crate::Command;
 use crate::HandShake;
 use crate::HashedCommand;
@@ -505,7 +506,8 @@ pub enum ContextStatus {
 pub struct Context {
     pub runs: u8, // 运行的次数
     pub error: ContextStatus,
-    pub idx: u16, //最多有65535个主从
+    pub idx: u8, //最多有256个主从
+    pub backend_type: BackendType,
     pub shard_idx: u16,
     pub year: u16,
 }

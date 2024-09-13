@@ -2,20 +2,19 @@ use std::fmt::Write;
 
 use chrono::NaiveDate;
 use ds::RingSlice;
-use protocol::vector::attachment::Route;
 use protocol::vector::{CommandType, KeysType, Postfix};
 use protocol::Result;
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
-use super::batch::Batch;
+use super::batch::Aggregation;
 use super::config::VectorNamespace;
 use super::vectortime::VectorTime;
 
 #[derive(Debug, Clone)]
 pub enum Strategist {
     VectorTime(VectorTime),
-    Batch(Batch),
+    Aggregation(Aggregation),
 }
 
 impl Default for Strategist {
@@ -32,10 +31,11 @@ impl Default for Strategist {
     }
 }
 
-//vector的Strategy用来确定以下几点：
-//3. 如何从keys中计算hash和year
-//1. 数据库表名的格式如 table_yymm
-//2. 库名表名后缀如何计算
+/// vector的Strategy用来确定以下几点：
+/// 1. 如何从keys中计算hash和year
+/// 2. 数据库表名的格式如 table_yymm
+/// 3. 库名表名后缀如何计算
+// 约定：对于aggregation策略，必须得有timeline、si，其他策略目前只能有主库表；
 impl Strategist {
     pub fn try_from(ns: &VectorNamespace) -> Option<Self> {
         Some(match ns.basic.strategy.as_str() {
@@ -47,7 +47,7 @@ impl Strategist {
                 }
                 //最后一个key需要是日期
                 let _: Postfix = ns.basic.keys.last().unwrap().as_str().try_into().ok()?;
-                Self::Batch(Batch::new_with_db(
+                Self::Aggregation(Aggregation::new_with_db(
                     ns.basic.db_name.clone(),
                     ns.basic.table_name.clone(),
                     ns.basic.db_count,
@@ -86,54 +86,54 @@ impl Strategist {
     pub fn distribution(&self) -> &DBRange {
         match self {
             Strategist::VectorTime(inner) => inner.distribution(),
-            Strategist::Batch(inner) => inner.distribution(),
+            Strategist::Aggregation(inner) => inner.distribution(),
         }
     }
     #[inline]
     pub fn si_distribution(&self) -> &DBRange {
         match self {
             Strategist::VectorTime(_) => panic!("not support"),
-            Strategist::Batch(inner) => inner.si_distribution(),
+            Strategist::Aggregation(inner) => inner.si_distribution(),
         }
     }
     #[inline]
     pub fn hasher(&self) -> &Hasher {
         match self {
             Strategist::VectorTime(inner) => inner.hasher(),
-            Strategist::Batch(inner) => inner.hasher(),
+            Strategist::Aggregation(inner) => inner.hasher(),
         }
     }
     #[inline]
     pub fn get_date(&self, cmd: CommandType, keys: &[RingSlice]) -> Result<NaiveDate> {
         match self {
             Strategist::VectorTime(inner) => inner.get_date(keys),
-            Strategist::Batch(inner) => inner.get_date(cmd, keys),
+            Strategist::Aggregation(inner) => inner.get_date(cmd, keys),
         }
     }
     // 请求成功后，是否有更多的数据需要请求
     #[inline]
-    pub fn more(&self) -> bool {
+    pub fn aggregation(&self) -> bool {
         match self {
             Strategist::VectorTime(_) => false,
-            Strategist::Batch(_) => true,
+            Strategist::Aggregation(_) => true,
         }
     }
 
     pub(crate) fn check_vector_cmd(&self, vcmd: &protocol::vector::VectorCmd) -> Result<()> {
         match self {
             Strategist::VectorTime(inner) => inner.check_vector_cmd(vcmd),
-            Strategist::Batch(inner) => inner.check_vector_cmd(vcmd),
+            Strategist::Aggregation(inner) => inner.check_vector_cmd(vcmd),
         }
     }
 
-    /// 获得配置的默认route；当配置strategy为aggregation时，默认的route是Aggregation，否则就是Main
-    #[inline]
-    pub(crate) fn route(&self) -> Route {
-        match self {
-            Strategist::Batch(_) => Route::Aggregation,
-            _ => Route::Main,
-        }
-    }
+    // /// 获得配置的默认route；当配置strategy为aggregation时，默认的route是Aggregation，否则就是Main
+    // #[inline]
+    // pub(crate) fn config_aggregation(&self) -> bool {
+    //     match self {
+    //         Strategist::Batch(_) => true,
+    //         _ => false,
+    //     }
+    // }
 
     // pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
     //     match self {
@@ -147,37 +147,37 @@ impl protocol::vector::Strategy for Strategist {
     fn keys(&self) -> &[String] {
         match self {
             Strategist::VectorTime(inner) => inner.keys(),
-            Strategist::Batch(inner) => inner.keys(),
+            Strategist::Aggregation(inner) => inner.keys(),
         }
     }
     fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_> {
         match self {
             Strategist::VectorTime(inner) => inner.keys_with_type(),
-            Strategist::Batch(inner) => inner.keys_with_type(),
+            Strategist::Aggregation(inner) => inner.keys_with_type(),
         }
     }
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64) {
         match self {
             Strategist::VectorTime(inner) => inner.write_database_table(buf, date, hash),
-            Strategist::Batch(inner) => inner.write_database_table(buf, date, hash),
+            Strategist::Aggregation(inner) => inner.write_database_table(buf, date, hash),
         }
     }
     fn write_si_database_table(&self, buf: &mut impl Write, hash: i64) {
         match self {
             Strategist::VectorTime(_) => panic!("not support"),
-            Strategist::Batch(inner) => inner.write_si_database_table(buf, hash),
+            Strategist::Aggregation(inner) => inner.write_si_database_table(buf, hash),
         }
     }
     fn batch(&self, limit: u64, vcmd: &protocol::vector::VectorCmd) -> u64 {
         match self {
             Strategist::VectorTime(_) => 0,
-            Strategist::Batch(inner) => inner.batch(limit, vcmd),
+            Strategist::Aggregation(inner) => inner.batch(limit, vcmd),
         }
     }
     fn si_cols(&self) -> &[String] {
         match self {
             Strategist::VectorTime(_) => panic!("not support"),
-            Strategist::Batch(inner) => inner.si_cols(),
+            Strategist::Aggregation(inner) => inner.si_cols(),
         }
     }
 }
@@ -186,6 +186,7 @@ impl protocol::vector::Strategy for Strategist {
 mod tests {
     use std::collections::HashMap;
 
+    use attachment::Route;
     use protocol::{
         kv::VectorSqlBuilder,
         vector::{mysql::*, *},
@@ -252,7 +253,7 @@ mod tests {
         // vrange
         let vector_cmd = VectorCmd {
             cmd: CommandType::VRange,
-            route: Route::Main,
+            route: Some(Route::TimelineOrMain),
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -281,7 +282,7 @@ mod tests {
         // vrange 无field
         let vector_cmd = VectorCmd {
             cmd: CommandType::VRange,
-            route: Route::Main,
+            route: Some(Route::TimelineOrMain),
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -308,7 +309,7 @@ mod tests {
         // 复杂vrange
         let vector_cmd = VectorCmd {
             cmd: CommandType::VRange,
-            route: Route::Main,
+            route: Some(Route::TimelineOrMain),
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -357,7 +358,7 @@ mod tests {
         // vcard
         let vector_cmd = VectorCmd {
             cmd: CommandType::VCard,
-            route: Route::Main,
+            route: Some(Route::TimelineOrMain),
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -401,7 +402,7 @@ mod tests {
         //vadd
         let vector_cmd = VectorCmd {
             cmd: CommandType::VAdd,
-            route: Route::Main,
+            route: Some(Route::TimelineOrMain),
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -445,7 +446,7 @@ mod tests {
         //vupdate
         let vector_cmd = VectorCmd {
             cmd: CommandType::VUpdate,
-            route: Route::Main,
+            route: Some(Route::TimelineOrMain),
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -498,7 +499,7 @@ mod tests {
         //vdel
         let vector_cmd = VectorCmd {
             cmd: CommandType::VDel,
-            route: Route::Main,
+            route: Some(Route::TimelineOrMain),
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -542,7 +543,7 @@ mod tests {
         // vget
         let vector_cmd = VectorCmd {
             cmd: CommandType::VGet,
-            route: Route::Main,
+            route: Some(Route::TimelineOrMain),
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -572,7 +573,7 @@ mod tests {
         // vget 无field
         let vector_cmd = VectorCmd {
             cmd: CommandType::VGet,
-            route: Route::Main,
+            route: Some(Route::TimelineOrMain),
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),
@@ -599,7 +600,7 @@ mod tests {
         // 复杂vget
         let vector_cmd = VectorCmd {
             cmd: CommandType::VGet,
-            route: Route::Main,
+            route: Some(Route::TimelineOrMain),
             keys: vec![
                 RingSlice::from_slice("id".as_bytes()),
                 RingSlice::from_slice("2105".as_bytes()),

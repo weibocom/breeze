@@ -8,7 +8,7 @@ use protocol::{
 use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]
-pub struct Batch {
+pub struct Aggregation {
     db_prefix: String,
     table_prefix: String,
     table_postfix: Postfix,
@@ -19,7 +19,7 @@ pub struct Batch {
     si: Si,
 }
 
-impl Batch {
+impl Aggregation {
     pub fn new_with_db(
         db_prefix: String,
         table_prefix: String,

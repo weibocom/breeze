@@ -291,7 +291,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
 
     fn write_sql(&self, buf: &mut impl Write) -> crate::Result<()> {
         match self.vcmd.cmd {
-            CommandType::VRange | CommandType::VGet => {
+            CommandType::VRange | CommandType::VGet | CommandType::VRangeTimeline => {
                 let _ = write!(
                     buf,
                     "select {} from {} where {}",
@@ -308,7 +308,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
                 );
             }
-            CommandType::VAdd => {
+            CommandType::VAdd | CommandType::VAddTimeline => {
                 let _ = write!(
                     buf,
                     "insert into {} ({}) values ({})",
@@ -317,7 +317,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     InsertVals(self.strategy, &self.vcmd.keys, &self.vcmd.fields),
                 );
             }
-            CommandType::VUpdate => {
+            CommandType::VUpdate | CommandType::VUpdateTimeline => {
                 let _ = write!(
                     buf,
                     "update {} set {} where {}",
@@ -326,7 +326,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
                 );
             }
-            CommandType::VDel => {
+            CommandType::VDel | CommandType::VDelTimeline => {
                 let _ = write!(
                     buf,
                     "delete from {} where {}",
@@ -396,7 +396,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
             // 1.2. 根据设置更新timeline：insert into $db$.$tb$ (uid, object_type, like_id, object_id) values (?, ?, ?, ?)
             // 备注：有些场景只更新si，有些场景只更新timeline，需要业务修改时考虑。
             // 1.3. mesh cmd: vadd $uid,$date object_type $obj_type object_id $obj_id like_id $like_id
-            CommandType::VAdd => {
+            CommandType::VAdd | CommandType::VAddSi => {
                 let count = self.strategy.si_cols().last().unwrap();
                 //对si表的更新插入至少需要keys + count + counttype 这些字段，下面会兜底校验
                 write!(
@@ -413,7 +413,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
             // 2.2. 删除timeline：delete from $db$.$tb$ where uid=? and object_id=?
             // 备注：有些场景只更新si，有些场景只更新timeline，需要业务修改时考虑。
             // 1.3. mesh cmd: vdel $uid,$date where object_type = $obj_type object_id = $obj_id
-            CommandType::VDel => {
+            CommandType::VDel | CommandType::VDelSi => {
                 //对si表的更新插入至少需要keys + count + counttype 这些字段，下面会兜底校验
                 write!(
                     buf,

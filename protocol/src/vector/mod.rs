@@ -1,5 +1,5 @@
 pub mod attachment;
-mod command;
+pub mod command;
 pub(crate) mod error;
 pub mod flager;
 pub mod mysql;
@@ -9,7 +9,7 @@ pub mod redis;
 mod reqpacket;
 mod rsppacket;
 
-use std::fmt::Write;
+use std::fmt::{Display, Write};
 
 use crate::{
     Attachment, Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol,
@@ -332,7 +332,7 @@ pub(crate) const COND_ORDER: &[u8] = b"ORDER";
 pub(crate) const COND_LIMIT: &[u8] = b"LIMIT";
 pub(crate) const COND_GROUP: &[u8] = b"GROUP";
 
-const DEFAULT_LIMIT: usize = 15;
+const DEFAULT_LIMIT: u16 = 15;
 
 #[derive(Debug, Clone, Default)]
 pub struct Condition {
@@ -379,8 +379,9 @@ pub type Field = (RingSlice, RingSlice);
 //非迭代版本，代价是内存申请。如果采取迭代版本，需要重复解析一遍，重复解析可以由parser实现，topo调用
 #[derive(Debug, Clone, Default)]
 pub struct VectorCmd {
-    pub route: Route,
     pub cmd: CommandType,
+    // 对于aggregation策略
+    pub route: Option<Route>,
     pub keys: Vec<RingSlice>,
     pub fields: Vec<Field>,
     pub wheres: Vec<Condition>,
@@ -391,11 +392,21 @@ pub struct VectorCmd {
 
 impl VectorCmd {
     #[inline(always)]
-    pub fn limit(&self) -> usize {
+    pub fn limit(&self) -> u16 {
         match self.limit.limit.try_str_num(..) {
-            Some(limit) => limit,
+            Some(limit) => limit as u16,
             None => DEFAULT_LIMIT,
         }
+    }
+}
+
+impl Display for VectorCmd {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "cmd:{:?}, route:{:?}, keys:{:?}",
+            self.cmd, self.route, self.keys
+        )
     }
 }
 
