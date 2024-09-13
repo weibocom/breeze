@@ -10,23 +10,19 @@ pub(crate) const KVECTOR_SEPARATOR: u8 = b',';
 pub fn parse_vector_detail(
     cmd: RingSlice,
     flag: &Flag,
-    route_default: Route,
+    config_aggregation: bool,
 ) -> crate::Result<VectorCmd> {
     let data = Packet::from(cmd);
 
     let mut vcmd: VectorCmd = Default::default();
-    vcmd.cmd = get_cfg(flag.op_code())?.cmd_type;
+    let cmd_props = get_cfg(flag.op_code())?;
+    vcmd.cmd = cmd_props.cmd_type;
     // 解析keys
     parse_vector_key(&data, flag.key_pos() as usize, &mut vcmd)?;
 
-    // 解析route
-    if vcmd.keys.len() > 0 {
-        if let Some(route) = Route::parse(&vcmd.keys.last().expect("kvector")) {
-            vcmd.keys.pop();
-            vcmd.route = route;
-        } else {
-            vcmd.route = route_default;
-        }
+    // 只对strategy为aggregation的配置，才设置route，否则直接访问当前main库表
+    if config_aggregation {
+        vcmd.route = Some(cmd_props.route);
     }
 
     // 解析fields

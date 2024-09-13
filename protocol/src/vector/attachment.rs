@@ -7,14 +7,13 @@ use crate::Operation;
 use crate::Packet;
 use ds::RingSlice;
 
+use super::CommandType;
 use super::VectorCmd;
 
 #[repr(C)]
 pub struct VectorAttach {
     // type
     attach_type: AttachType,
-    // 请求执行的路线，eg：timeline/main，si，aggretation
-    route: Route,
     // attach basic fields
     pub vcmd: VectorCmd,
     // 查询的轮次，0代表si
@@ -81,39 +80,91 @@ pub enum AttachType {
     Store = 2,
 }
 
-#[derive(Debug, Clone)]
-#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
 pub enum Route {
-    Main = 0,
-    Si = 1,
-    Aggregation = 2,
+    Aggregation = 0,
+    TimelineOrMain = 1,
+    Si = 2,
 }
 
 impl Default for Route {
     fn default() -> Self {
-        Route::Main
+        Route::Aggregation
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum BackendType {
+    Unknown = 0,
+    TimelineOrMain = 1,
+    Si = 2,
+}
+
+impl Default for BackendType {
+    fn default() -> Self {
+        BackendType::TimelineOrMain
+    }
+}
+
+impl BackendType {
+    #[inline(always)]
+    pub fn is_timeline_or_main(&self) -> bool {
+        match self {
+            BackendType::TimelineOrMain => true,
+            _ => false,
+        }
+    }
+}
+
+impl From<u8> for BackendType {
+    fn from(v: u8) -> Self {
+        match v {
+            0 => BackendType::Unknown,
+            1 => BackendType::TimelineOrMain,
+            2 => BackendType::Si,
+            _ => panic!("invalid backend type"),
+        }
     }
 }
 
 impl Route {
-    /// parse route from string，目前只有 timeline、si两种
+    /// parse route from string，对于配置为aggregation的业务，目前只有timeline和si两种需要特殊指出，默认是aggregation
     #[inline(always)]
-    pub fn parse(route_str: &RingSlice) -> Option<Self> {
+    pub fn parse(route_str: &RingSlice) -> Self {
         if route_str.start_ignore_case(0, "timeline".as_bytes()) {
-            Some(Route::Main)
+            Route::TimelineOrMain
         } else if route_str.start_ignore_case(0, "si".as_bytes()) {
-            Some(Route::Si)
+            Route::Si
         } else {
-            None
+            Route::Aggregation
         }
     }
 
-    /// check是否是aggregation，只有config策略是aggregation时，才可以
     #[inline(always)]
     pub fn is_aggregation(&self) -> bool {
         match self {
             Route::Aggregation => true,
             _ => false,
+        }
+    }
+
+    /// 获取aggregation的执行route
+    #[inline(always)]
+    pub fn current_access_timeline(&self, cmd: CommandType, round: u16) -> bool {
+        match self {
+            Route::Si => false,
+            Route::TimelineOrMain => true,
+            Route::Aggregation => {
+                if cmd.is_store() {
+                    // (Route::TimelineOrMain, Route::Si)，对于store，first round访问timeline，否则访问si
+                    round == 0
+                } else {
+                    // (Route::Si, Route::TimelineOrMain)，对于retrive指令，first round访问si，非first round才访问timeline，
+                    !(round != 0)
+                }
+            }
         }
     }
 }
@@ -126,20 +177,19 @@ impl Default for AttachType {
 
 impl VectorAttach {
     #[inline(always)]
-    pub fn new(operation: Operation, route: &Route, left_count: u16) -> Self {
+    pub fn new(operation: Operation, vcmd: VectorCmd) -> Self {
+        let limit = vcmd.limit();
         match operation {
             Operation::Get | Operation::Gets => Self {
                 attach_type: AttachType::Retrieve,
-                route: route.clone(),
-                vcmd: VectorCmd::default(),
+                vcmd: vcmd,
                 round: 0,
                 rsp_ok: false,
-                attach_ext: VectorAttachExt::default_retrieve_attach(left_count),
+                attach_ext: VectorAttachExt::default_retrieve_attach(limit),
             },
             Operation::Store => Self {
                 attach_type: AttachType::Store,
-                route: route.clone(),
-                vcmd: VectorCmd::default(),
+                vcmd: vcmd,
                 round: 0,
                 rsp_ok: false,
                 attach_ext: VectorAttachExt::default_store_attach(),
