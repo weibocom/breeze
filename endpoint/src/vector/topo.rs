@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::env;
 
 use chrono::{Datelike, NaiveDate};
 use discovery::dns;
@@ -182,6 +183,12 @@ where
                 self.strategist.check_vector_cmd(&vcmd)?;
 
                 if vcmd.route.expect("aggregation").is_aggregation() {
+                    // 目前非retrive请求，默认不开启聚合请求，避免sdk无操作
+                    if !self.check_aggregation_request(req, true) {
+                        log::info!("+++ found unsupported req:{}", req);
+                        return Err(protocol::Error::ProtocolNotSupported);
+                    }
+
                     req.set_next_round(true);
                     let operation = req.operation();
                     let attach = VectorAttach::new(operation, vcmd).to_attach();
@@ -189,6 +196,7 @@ where
 
                     self.reshape_and_get_shard(req, None, 0)?
                 } else {
+                    // 非aggregation请求的场景，不需要构建attachement
                     self.reshape_and_get_shard(req, Some(vcmd), 0)?
                 }
 
@@ -355,6 +363,28 @@ where
         vcmd.route
             .expect("aggregation")
             .current_backend_timeline(operation, round)
+    }
+
+    /// check是否支持该aggregation请求，目前默认只支持retrieve类聚合请求
+    #[inline]
+    fn check_aggregation_request(&self, req: &Req, aggregation_route: bool) -> bool {
+        if req.operation().is_retrival() {
+            // retrival 请求总是支持
+            true
+        } else if aggregation_route && self.strategist.aggregation() {
+            // 对非retrieve类的聚合请求，在aggregation策略的topo中，设置环境变量aggregation_store_enable为true，才支持访问；
+            // 目前线上业务都不打开，故线上应该没有此类访问；待有需求再打开
+            log::info!(
+                "AGGENGATION_STORE: {}",
+                env::var("AGGENGATION_STORE").unwrap_or("not-set".to_string())
+            );
+            env::var("AGGENGATION_STORE")
+                .unwrap_or("false".to_string())
+                .parse::<bool>()
+                .unwrap_or(false)
+        } else {
+            true
+        }
     }
 }
 
