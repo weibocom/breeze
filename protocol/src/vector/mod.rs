@@ -12,7 +12,7 @@ mod rsppacket;
 use std::fmt::{Display, Write};
 
 use crate::{
-    Attachment, Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol,
+    Attachment, Command, Commander, Error, HashedCommand, Metric, MetricItem, Operation, Protocol,
     RequestProcessor, Result, Stream, Writer,
 };
 use attachment::{AttachType, Route};
@@ -392,10 +392,13 @@ pub struct VectorCmd {
 
 impl VectorCmd {
     #[inline(always)]
-    pub fn limit(&self) -> u16 {
+    pub fn limit(&self, operation: Operation) -> u16 {
         match self.limit.limit.try_str_num(..) {
             Some(limit) => limit as u16,
-            None => DEFAULT_LIMIT,
+            None => match operation {
+                Operation::Get | Operation::Gets | Operation::MGet => DEFAULT_LIMIT,
+                Operation::Store | Operation::Meta | Operation::Other => 0,
+            },
         }
     }
 }
