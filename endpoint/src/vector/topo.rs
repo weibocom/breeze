@@ -8,11 +8,11 @@ use ds::MemGuard;
 use protocol::kv::{ContextStatus, MysqlBuilder};
 use protocol::vector::attachment::{BackendType, VAttach, VectorAttach};
 use protocol::vector::redis::parse_vector_detail;
-use protocol::vector::{CommandType, VectorCmd};
-use protocol::Protocol;
+use protocol::vector::{command, CommandType, VectorCmd};
 use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
+use protocol::{Operation, Protocol};
 use sharding::hash::{Hash, HashKey};
 
 use crate::dns::DnsConfig;
@@ -79,20 +79,26 @@ where
     fn get_timeline_query_param(
         &self,
         req: &Req,
+        unbound_vcmd: &Option<VectorCmd>,
         round: u16,
     ) -> Result<(bool, u16, NaiveDate), protocol::Error> {
         use CommandType::*;
-        let vcmd = &req.attach().vcmd;
-        assert!(vcmd.cmd == VRange || vcmd.cmd == VRangeTimeline, "{vcmd}");
+        let vcmd = unbound_vcmd.as_ref().unwrap_or(&req.attach().vcmd);
+        let cmd_props = command::get_cfg(req.op_code())?;
 
-        if round == 0 {
-            // 第一次请求直接请求timeline，说明不是aggregation，直接从vcmd中获取
+        // round为0时查timeline，肯定不是retrieve的aggregation请求；
+        // 只有对retrieve类的aggregation请求，才会从si中获取timeline参数，其他的都不用；
+        if round == 0 || !cmd_props.get_route().is_aggregation() {
             let date = self.strategist.get_date(vcmd.cmd, &vcmd.keys)?;
-            return Ok((true, vcmd.limit() as u16, date));
+            let next_round = round == 0 && cmd_props.get_route().is_aggregation();
+            return Ok((next_round, vcmd.limit(req.operation()) as u16, date));
         }
 
+        assert!(req.operation().is_retrival(), "{vcmd}");
+        assert!(vcmd.cmd == VRange || vcmd.cmd == VRangeTimeline, "{vcmd}");
+        assert!(req.attachment().is_some(), "{vcmd}");
+
         //根据round从si获取timeline查询的参数
-        assert!(vcmd.route.expect("route").is_aggregation(), "{vcmd}");
         let attach = req.attach().retrieve_attach();
         let si_items = attach.si();
         assert!(si_items.len() > 0, "si_items.len() = 0");
@@ -112,7 +118,7 @@ where
         let Some(date) = NaiveDate::from_ymd_opt(year.into(), si_item.date.month.into(), 1) else {
             return Err(protocol::Error::ResponseInvalidMagic);
         };
-        Ok((round == si_items.len() as u16, limit, date))
+        Ok((round < si_items.len() as u16, limit, date))
     }
 
     fn get_shard(&self, req: &mut Req) -> Result<&Shard<E>, protocol::Error> {
@@ -167,7 +173,7 @@ where
         //分别代表请求的轮次和每轮重试次数
         let runs = req.ctx_mut().runs;
         //runs == 0 表示第一轮第一次请求
-        let shard = if runs == 0 || req.attach().rsp_ok {
+        let shard = if runs == 0 || (req.attachment().is_some() && req.attach().rsp_ok) {
             let shard = if runs == 0 {
                 assert_eq!(*req.context_mut(), 0);
                 assert_eq!(req.attachment(), None);
@@ -175,10 +181,16 @@ where
                 let vcmd = parse_vector_detail(****req, req.flag(), true)?;
                 self.strategist.check_vector_cmd(&vcmd)?;
 
-                req.set_next_round(vcmd.route.expect("aggregation").is_aggregation());
-                let operation = req.operation();
-                let attach = VectorAttach::new(operation, vcmd).to_attach();
-                let _ = req.attachment_mut().insert(attach);
+                if vcmd.route.expect("aggregation").is_aggregation() {
+                    req.set_next_round(true);
+                    let operation = req.operation();
+                    let attach = VectorAttach::new(operation, vcmd).to_attach();
+                    let _ = req.attachment_mut().insert(attach);
+
+                    self.reshape_and_get_shard(req, None, 0)?
+                } else {
+                    self.reshape_and_get_shard(req, Some(vcmd), 0)?
+                }
 
                 // ===============  抽取si shard
                 // //上行请求不需要初始化leftcount
@@ -194,15 +206,6 @@ where
 
                 // &self.si_shard[si_shard_idx]
                 // ===============  抽取si shard
-
-                let (backend_type, shard) = self.reshape_and_get_shard(req)?;
-                req.ctx_mut().backend_type = backend_type;
-
-                if !req.get_next_round() {
-                    // 如果请求不需要下一轮子请求，将attachement take掉
-                    req.attachment_mut().take();
-                }
-                shard
             } else {
                 assert!(req.get_next_round());
                 // let (last, limit, date) = self.sql_info(req, req.attach().round)?;
@@ -227,14 +230,14 @@ where
                 // shards.get(shard_idx).ok_or(protocol::Error::TopInvalid)?
 
                 assert!(req.attachment().is_some());
-                let (backend_type, shard) = self.reshape_and_get_shard(req)?;
-                req.ctx_mut().backend_type = backend_type;
-                shard
+                self.reshape_and_get_shard(req, None, req.attach().round)?
             };
 
             //重新发送后，视作新的请求，重置响应和runs
-            req.attach_mut().rsp_ok = false;
-            req.attach_mut().round += 1;
+            if req.attachment().is_some() {
+                req.attach_mut().rsp_ok = false;
+                req.attach_mut().round += 1;
+            }
             req.ctx_mut().runs = 0;
             // req.set_fitst_try();
             shard
@@ -273,30 +276,41 @@ where
     fn reshape_and_get_shard(
         &self,
         req: &mut Req,
-    ) -> Result<(BackendType, &Shard<E>), protocol::Error> {
-        let attach = req.attach();
-        if self.will_access_timeline(&attach.vcmd, attach.round) {
-            let (last, limit, date) = self.get_timeline_query_param(req, attach.round)?;
-            if last {
-                req.set_next_round(false);
-            }
-            self.reshap_request_timeline(req, limit, date)?;
+        unbound_vcmd: Option<VectorCmd>,
+        round: u16,
+    ) -> Result<&Shard<E>, protocol::Error> {
+        let vcmd = unbound_vcmd.as_ref().unwrap_or(&req.attach().vcmd);
+        if self.will_access_timeline(&vcmd, req.operation(), round) {
+            let (next_round, date) = self.reshap_request_timeline(req, unbound_vcmd, round)?;
+            req.set_next_round(next_round);
             let shard = self.get_shard_timeline(req, &date)?;
-            Ok((BackendType::TimelineOrMain, shard))
+            req.ctx_mut().backend_type = BackendType::TimelineOrMain;
+            Ok(shard)
         } else {
-            self.reshape_request_si(req)?;
-            Ok((BackendType::Si, self.get_shard_si(req)))
+            let next_round = self.reshape_request_si(req, unbound_vcmd)?;
+            req.ctx_mut().backend_type = BackendType::Si;
+            req.set_next_round(next_round);
+
+            Ok(self.get_shard_si(req))
         }
     }
 
     /// 获取si shard，注意区分第一次获取和重试获取
-    fn reshape_request_si(&self, req: &mut Req) -> Result<(), protocol::Error> {
-        let vcmd = &req.attach().vcmd;
+    fn reshape_request_si(
+        &self,
+        req: &mut Req,
+        unbound_vcmd: Option<VectorCmd>,
+    ) -> Result<bool, protocol::Error> {
+        let vcmd = unbound_vcmd.as_ref().unwrap_or(&req.attach().vcmd);
+        assert!(vcmd.route.is_some(), "{vcmd}");
+        let next_round = req.operation().is_retrival() && vcmd.route.expect("si").is_aggregation();
+
         let date = self.strategist.get_date(vcmd.cmd, &vcmd.keys)?;
         let si_sql = SiSqlBuilder::new(&vcmd, req.hash(), date, &self.strategist)?;
         let cmd = MysqlBuilder::build_packets_for_vector(si_sql)?;
         req.reshape(MemGuard::from_vec(cmd));
-        Ok(())
+
+        Ok(next_round)
     }
 
     fn get_shard_si(&self, req: &mut Req) -> &Shard<E> {
@@ -310,16 +324,18 @@ where
     fn reshap_request_timeline(
         &self,
         req: &mut Req,
-        limit: u16,
-        date: NaiveDate,
-    ) -> Result<(), protocol::Error> {
-        let vcmd = &req.attach().vcmd;
+        unbound_vcmd: Option<VectorCmd>,
+        round: u16,
+    ) -> Result<(bool, NaiveDate), protocol::Error> {
+        let (next_round, limit, date) = self.get_timeline_query_param(req, &unbound_vcmd, round)?;
+
+        let vcmd = unbound_vcmd.as_ref().unwrap_or(&req.attach().vcmd);
         let vector_builder =
             SqlBuilder::new(vcmd, req.hash(), date, &self.strategist, limit as u64)?;
         let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
         req.reshape(MemGuard::from_vec(cmd));
         req.ctx_mut().year = date.year() as u16;
-        Ok(())
+        Ok((next_round, date))
     }
 
     #[inline]
@@ -335,10 +351,10 @@ where
     }
 
     #[inline]
-    fn will_access_timeline(&self, vcmd: &VectorCmd, round: u16) -> bool {
+    fn will_access_timeline(&self, vcmd: &VectorCmd, operation: Operation, round: u16) -> bool {
         vcmd.route
             .expect("aggregation")
-            .current_access_timeline(vcmd.cmd, round)
+            .current_backend_timeline(operation, round)
     }
 }
 
@@ -399,10 +415,12 @@ where
             // 只重试一次，重试次数过多，可能会导致雪崩。如果不重试，现在的配额策略在当前副本也只会连续发送四次请求，问题也不大
             let try_next = ctx.runs == 1;
             req.try_next(try_next);
+            log::info!("+++ send to {}, req: {}", endpoint.addr(), req);
             endpoint.send(req)
         } else {
             let ctx = req.ctx_mut();
             ctx.runs += 1;
+            log::info!("+++ send to master {}, req: {}", shard.master.addr(), req);
             shard.master().send(req);
         }
     }

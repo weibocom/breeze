@@ -3,10 +3,11 @@ use crate::redis_helper::*;
 #[allow(unused)]
 use function_name::named;
 use redis::Value;
+mod aggregation;
 
-const RESTYPE: &str = "vector";
-const CMD_VGET: &str = "vget";
-const CMD_VRANGE: &str = "vrange";
+pub(crate) const RESTYPE: &str = "vector";
+pub(crate) const CMD_VGET: &str = "vget";
+pub(crate) const CMD_VRANGE: &str = "vrange";
 
 #[test]
 #[named]

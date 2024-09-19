@@ -579,6 +579,7 @@ impl<'a, S: Strategy> Display for SiKeysAndDelConds<'a, S> {
                 }
             }
         }
+        log::info!("+++ ==== si cols {} / {}", si_cols.len(), has_count_type);
         //必须提供count_type
         if si_cols.len() > 2 && !has_count_type {
             return Err(std::fmt::Error);

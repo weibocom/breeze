@@ -7,7 +7,6 @@ use crate::Operation;
 use crate::Packet;
 use ds::RingSlice;
 
-use super::CommandType;
 use super::VectorCmd;
 
 #[repr(C)]
@@ -152,17 +151,17 @@ impl Route {
 
     /// 获取aggregation的执行route
     #[inline(always)]
-    pub fn current_access_timeline(&self, cmd: CommandType, round: u16) -> bool {
+    pub fn current_backend_timeline(&self, op: Operation, round: u16) -> bool {
         match self {
             Route::Si => false,
             Route::TimelineOrMain => true,
             Route::Aggregation => {
-                if cmd.is_store() {
+                if op.is_store() {
                     // (Route::TimelineOrMain, Route::Si)，对于store，first round访问timeline，否则访问si
                     round == 0
                 } else {
                     // (Route::Si, Route::TimelineOrMain)，对于retrive指令，first round访问si，非first round才访问timeline，
-                    !(round != 0)
+                    round != 0
                 }
             }
         }
@@ -178,7 +177,7 @@ impl Default for AttachType {
 impl VectorAttach {
     #[inline(always)]
     pub fn new(operation: Operation, vcmd: VectorCmd) -> Self {
-        let limit = vcmd.limit();
+        let limit = vcmd.limit(operation);
         match operation {
             Operation::Get | Operation::Gets => Self {
                 attach_type: AttachType::Retrieve,

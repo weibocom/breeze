@@ -215,6 +215,10 @@ impl CommandProperties {
         self.quit = true;
         self
     }
+    #[inline]
+    pub fn get_route(&self) -> Route {
+        self.route
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -249,25 +253,5 @@ pub enum CommandType {
 impl Default for CommandType {
     fn default() -> Self {
         CommandType::Unknown
-    }
-}
-
-impl CommandType {
-    /// 为了避免新增指令时，忘记修改此处，所以此处改用罗列所有的type
-    #[inline]
-    pub fn is_store(&self) -> bool {
-        match self {
-            Self::VGet | Self::VRange | Self::VCard | Self::VRangeTimeline => false,
-            Self::VAdd
-            | Self::VUpdate
-            | Self::VDel
-            | Self::VAddTimeline
-            | Self::VAddSi
-            | Self::VUpdateSi
-            | Self::VUpdateTimeline
-            | Self::VDelSi
-            | Self::VDelTimeline => true,
-            Self::Unknown => panic!("unknown command type"),
-        }
     }
 }
