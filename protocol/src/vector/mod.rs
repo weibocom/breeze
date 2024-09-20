@@ -199,6 +199,11 @@ impl Protocol for Vector {
 
         match vec_attach.attch_type() {
             AttachType::Retrieve => {
+                // 如果header为none，说明查询结果为空，直接返回false
+                if response.header.is_none() {
+                    return false;
+                }
+
                 assert!(response.header.is_some(), "rsp:{}", response);
                 let attach = vec_attach.retrieve_attach_mut();
                 let body_data = response.data().0.to_vec();
