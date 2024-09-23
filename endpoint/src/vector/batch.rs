@@ -161,26 +161,36 @@ impl Aggregation {
     }
 
     //校验动态信息，后续有重复校验的后面延迟校验
-    //上行多带一个日期key，日期key固定在最后
+    //上行、xx.timeline请求多带一个日期key，日期key固定在最后
     pub(crate) fn check_vector_cmd(
         &self,
         vcmd: &protocol::vector::VectorCmd,
     ) -> protocol::Result<()> {
         match vcmd.cmd {
-            CommandType::VRange | CommandType::VGet => {
+            CommandType::VRange
+            | CommandType::VGet
+            | CommandType::VAddSi
+            | CommandType::VDelSi
+            | CommandType::VCard => {
                 if vcmd.keys.len() != self.keys().len() - 1 {
                     return Err(Error::RequestProtocolInvalid);
                 }
                 Ok(())
             }
             //相比vrange多了一个日期key
-            CommandType::VAdd | CommandType::VDel => {
+            CommandType::VAdd
+            | CommandType::VDel
+            | CommandType::VUpdate
+            | CommandType::VAddTimeline
+            | CommandType::VDelTimeline
+            | CommandType::VRangeTimeline
+            | CommandType::VUpdateTimeline => {
                 if vcmd.keys.len() != self.keys().len() {
                     return Err(Error::RequestProtocolInvalid);
                 }
                 Ok(())
             }
-            _ => panic!("not sup {:?}", vcmd.cmd),
+            CommandType::Unknown => panic!("not sup {:?}", vcmd.cmd),
         }
     }
 }

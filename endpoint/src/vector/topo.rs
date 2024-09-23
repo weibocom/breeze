@@ -84,7 +84,11 @@ where
         round: u16,
     ) -> Result<(bool, u16, NaiveDate), protocol::Error> {
         use CommandType::*;
-        let vcmd = unbound_vcmd.as_ref().unwrap_or(&req.attach().vcmd);
+        // let vcmd = unbound_vcmd.as_ref().unwrap_or(&req.attach().vcmd);
+        let vcmd = unbound_vcmd
+            .as_ref()
+            .or_else(|| Some(&req.attach().vcmd))
+            .expect("vcmd");
         let cmd_props = command::get_cfg(req.op_code())?;
 
         // round为0时查timeline，肯定不是retrieve的aggregation请求；
@@ -287,7 +291,11 @@ where
         unbound_vcmd: Option<VectorCmd>,
         round: u16,
     ) -> Result<&Shard<E>, protocol::Error> {
-        let vcmd = unbound_vcmd.as_ref().unwrap_or(&req.attach().vcmd);
+        // let vcmd = unbound_vcmd.as_ref().unwrap_or(&req.attach().vcmd);
+        let vcmd = unbound_vcmd
+            .as_ref()
+            .or_else(|| Some(&req.attach().vcmd))
+            .expect("vcmd");
         if self.will_access_timeline(&vcmd, req.operation(), round) {
             let (next_round, date) = self.reshap_request_timeline(req, unbound_vcmd, round)?;
             req.set_next_round(next_round);
@@ -309,7 +317,10 @@ where
         req: &mut Req,
         unbound_vcmd: Option<VectorCmd>,
     ) -> Result<bool, protocol::Error> {
-        let vcmd = unbound_vcmd.as_ref().unwrap_or(&req.attach().vcmd);
+        let vcmd = unbound_vcmd
+            .as_ref()
+            .or_else(|| Some(&req.attach().vcmd))
+            .expect("vcmd");
         assert!(vcmd.route.is_some(), "{vcmd}");
         let next_round = req.operation().is_retrival() && vcmd.route.expect("si").is_aggregation();
 
@@ -337,7 +348,11 @@ where
     ) -> Result<(bool, NaiveDate), protocol::Error> {
         let (next_round, limit, date) = self.get_timeline_query_param(req, &unbound_vcmd, round)?;
 
-        let vcmd = unbound_vcmd.as_ref().unwrap_or(&req.attach().vcmd);
+        // let vcmd = unbound_vcmd.as_ref().unwrap_or(&req.attach().vcmd);
+        let vcmd = unbound_vcmd
+            .as_ref()
+            .or_else(|| Some(&req.attach().vcmd))
+            .expect("vcmd");
         let vector_builder =
             SqlBuilder::new(vcmd, req.hash(), date, &self.strategist, limit as u64)?;
         let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;

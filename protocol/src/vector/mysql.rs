@@ -248,12 +248,14 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
     fn len(&self) -> usize {
         //按照可能的最长长度计算，其中table长度取得32，key长度取得5，测试比实际长15左右
         let mut base = match self.vcmd.cmd {
-            CommandType::VRange | CommandType::VGet => "select  from  where ".len(),
+            CommandType::VRange | CommandType::VGet | CommandType::VRangeTimeline => {
+                "select  from  where ".len()
+            }
             CommandType::VCard => "select count(*) from  where ".len(),
-            CommandType::VAdd => "insert into  () values ()".len(),
-            CommandType::VUpdate => "update  set  where ".len(),
-            CommandType::VDel => "delete from  where ".len(),
-            _ => {
+            CommandType::VAdd | CommandType::VAddTimeline => "insert into  () values ()".len(),
+            CommandType::VUpdate | CommandType::VUpdateTimeline => "update  set  where ".len(),
+            CommandType::VDel | CommandType::VDelTimeline => "delete from  where ".len(),
+            CommandType::VAddSi | CommandType::VDelSi | CommandType::Unknown => {
                 //校验应该在parser_req出
                 panic!("not support cmd_type:{:?}", self.vcmd.cmd);
             }
@@ -290,6 +292,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
     }
 
     fn write_sql(&self, buf: &mut impl Write) -> crate::Result<()> {
+        // TODO：使用所有commandType的具体类型，而非通配符_,避免新增type后，因未变更没有正确处理；后续考虑优化 fishermen
         match self.vcmd.cmd {
             CommandType::VRange | CommandType::VGet | CommandType::VRangeTimeline => {
                 let _ = write!(
@@ -334,7 +337,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
                 );
             }
-            _ => {
+            CommandType::VAddSi | CommandType::VDelSi | CommandType::Unknown => {
                 //校验应该在parser_req出
                 panic!("not support cmd_type:{:?}", self.vcmd.cmd);
             }
