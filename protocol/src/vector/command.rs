@@ -157,9 +157,10 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("vadd.timeline").route(Route::TimelineOrMain).arity(-2).op(Store).cmd_type(CommandType::VAddTimeline).padding(pt[3]).has_key().can_hold_field(),
         Cmd::new("vadd.si").route(Route::Si).arity(-2).op(Store).cmd_type(CommandType::VAddSi).padding(pt[3]).has_key().can_hold_field(),
         Cmd::new("vupdate.timeline").route(Route::TimelineOrMain).arity(-2).op(Store).cmd_type(CommandType::VUpdateTimeline).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
-        // VUpdateSi, updatesi 同addsi 一样，不需要单独处理
-        // Cmd::new("vupdate.si").route(Route::Si).arity(-2).op(Store).cmd_type(CommandType::VUpdateSi).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
+        // VUpdateSi, 在decr时，会用到update.si
+        Cmd::new("vupdate.si").route(Route::Si).arity(-2).op(Store).cmd_type(CommandType::VUpdateSi).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
         Cmd::new("vdel.timeline").route(Route::TimelineOrMain).arity(-2).op(Store).cmd_type(CommandType::VDelTimeline).padding(pt[3]).has_key().can_hold_where_condition(),
+        // 部分业务，仍然会del si
         Cmd::new("vdel.si").route(Route::Si).arity(-2).op(Store).cmd_type(CommandType::VDelSi).padding(pt[3]).has_key().can_hold_where_condition(),
 
     ] {
@@ -238,6 +239,7 @@ pub enum CommandType {
     VAddTimeline,
     VAddSi,
     VUpdateTimeline,
+    VUpdateSi,
     VDelTimeline,
     VDelSi,
 
