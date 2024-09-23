@@ -170,6 +170,7 @@ impl Aggregation {
             CommandType::VRange
             | CommandType::VGet
             | CommandType::VAddSi
+            | CommandType::VUpdateSi
             | CommandType::VDelSi
             | CommandType::VCard => {
                 if vcmd.keys.len() != self.keys().len() - 1 {

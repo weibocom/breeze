@@ -255,9 +255,12 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
             CommandType::VAdd | CommandType::VAddTimeline => "insert into  () values ()".len(),
             CommandType::VUpdate | CommandType::VUpdateTimeline => "update  set  where ".len(),
             CommandType::VDel | CommandType::VDelTimeline => "delete from  where ".len(),
-            CommandType::VAddSi | CommandType::VDelSi | CommandType::Unknown => {
+            CommandType::VAddSi
+            | CommandType::VUpdateSi
+            | CommandType::VDelSi
+            | CommandType::Unknown => {
                 //校验应该在parser_req出
-                panic!("not support cmd_type:{:?}", self.vcmd.cmd);
+                panic!("not support in timeline cmd_type:{:?}", self.vcmd.cmd);
             }
         };
         let VectorCmd {
@@ -337,9 +340,12 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
                 );
             }
-            CommandType::VAddSi | CommandType::VDelSi | CommandType::Unknown => {
+            CommandType::VAddSi
+            | CommandType::VUpdateSi
+            | CommandType::VDelSi
+            | CommandType::Unknown => {
                 //校验应该在parser_req出
-                panic!("not support cmd_type:{:?}", self.vcmd.cmd);
+                panic!("not support in timeline cmd_type:{:?}", self.vcmd.cmd);
             }
         }
         Ok(())
