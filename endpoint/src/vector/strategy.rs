@@ -3,7 +3,7 @@ use std::fmt::Write;
 use chrono::NaiveDate;
 use ds::RingSlice;
 use protocol::vector::{CommandType, KeysType, Postfix};
-use protocol::Result;
+use protocol::{Operation, Result};
 use sharding::distribution::DBRange;
 use sharding::hash::Hasher;
 
