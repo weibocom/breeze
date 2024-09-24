@@ -506,11 +506,18 @@ impl<'a, S: Strategy> Display for SiInsertCols<'a, S> {
         let mut has_count_type = false;
         let si_cols = strategy.si_cols();
         for field in fields {
-            for col in si_cols {
-                if field.0.equal(col.as_bytes()) {
-                    let _ = write!(f, ",{}", Key(&field.0));
-                    has_count_type = true;
-                }
+            // 目前配置限制了count只能支持1种类型，先打通，后续需要调整配置，以支持多种count fishermen
+            // for col in si_cols {
+            //     if field.0.equal(col.as_bytes()) {
+            //         let _ = write!(f, ",{}", Key(&field.0));
+            //         has_count_type = true;
+            //     }
+
+            assert_eq!(si_cols.len(), 3);
+            if field.0.equal(si_cols[1].as_bytes()) {
+                let _ = write!(f, ",{}", Key(&field.0));
+                has_count_type = true;
+                break;
             }
         }
         //必须提供count_type
@@ -542,11 +549,21 @@ impl<'a, S: Strategy> Display for SiInsertVals<'a, S> {
             }
         }
         let si_cols = strategy.si_cols();
+        let count_origin = "1".as_bytes().to_vec();
+        let mut count = RingSlice::from_vec(&count_origin);
         for field in fields {
-            for col in si_cols {
-                if field.0.equal(col.as_bytes()) {
-                    let _ = write!(f, ",{}", Val(&field.1));
-                }
+            // 目前配置限制了count只能支持1种类型，先打通，后续需要调整配置，以支持多种count fishermen
+            // for col in si_cols {
+            //     if field.0.equal(col.as_bytes()) {
+            //         let _ = write!(f, ",{}", Val(&field.1));
+            //     }
+            // }
+            assert_eq!(si_cols.len(), 3);
+            if field.0.equal(si_cols[1].as_bytes()) {
+                let _ = write!(f, ",{}", Val(&field.1));
+            }
+            if field.0.equal(si_cols[2].as_bytes()) {
+                count = field.1;
             }
         }
         //date,count
@@ -557,7 +574,7 @@ impl<'a, S: Strategy> Display for SiInsertVals<'a, S> {
             date.year(),
             date.month(),
             date.day(),
-            1
+            Val(&count)
         );
         Ok(())
     }

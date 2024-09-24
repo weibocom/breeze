@@ -103,11 +103,7 @@ impl Aggregation {
 
     pub fn get_date(&self, cmd: CommandType, keys: &[RingSlice]) -> Result<NaiveDate, Error> {
         match cmd {
-            CommandType::VRange
-            | CommandType::VGet
-            | CommandType::VAddSi
-            | CommandType::VUpdateSi
-            | CommandType::VDelSi => Ok(NaiveDate::default()),
+            CommandType::VRange | CommandType::VGet => Ok(NaiveDate::default()),
             //相比vrange多了一个日期key
             _ => {
                 let date = keys.last().unwrap();
