@@ -421,6 +421,8 @@ where
     ///     2.1 没有请求route，上行失败直接返回，下行失败重试一次。
     /// </pre>
     fn send(&self, mut req: Self::Item) {
+        log::info!("+++ will send req: {}", req);
+
         let shard = if !self.strategist.aggregation() {
             self.get_shard(&mut req)
         } else {
