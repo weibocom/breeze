@@ -161,7 +161,7 @@ pub(crate) fn validate_field_name(field_name: RingSlice) -> Result<()> {
 ///   6. vget：key不能为0
 pub(crate) fn validate_cmd(vcmd: &VectorCmd, cmd_type: CommandType) -> Result<()> {
     match cmd_type {
-        CommandType::VRange | CommandType::VRangeTimeline => {
+        CommandType::VRange | CommandType::VRangeTimeline | CommandType::VRangeSi => {
             // vrange 的fields数量不能大于1
             if vcmd.fields.len() > 1
                 || (vcmd.fields.len() == 1 && !vcmd.fields[0].0.equal_ignore_case(FIELD_BYTES))
@@ -174,7 +174,7 @@ pub(crate) fn validate_cmd(vcmd: &VectorCmd, cmd_type: CommandType) -> Result<()
                 return Err(crate::Error::RequestInvalidMagic);
             }
         }
-        CommandType::VUpdate | CommandType::VUpdateTimeline => {
+        CommandType::VUpdate | CommandType::VUpdateTimeline | CommandType::VUpdateSi => {
             if vcmd.fields.len() == 0 {
                 return Err(crate::Error::RequestInvalidMagic);
             }
@@ -191,7 +191,7 @@ pub(crate) fn validate_cmd(vcmd: &VectorCmd, cmd_type: CommandType) -> Result<()
             }
         }
         CommandType::VCard => {}
-        _ => {
+        CommandType::Unknown => {
             panic!("unknown kvector cmd:{:?}", vcmd);
         }
     }

@@ -255,7 +255,8 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
             CommandType::VAdd | CommandType::VAddTimeline => "insert into  () values ()".len(),
             CommandType::VUpdate | CommandType::VUpdateTimeline => "update  set  where ".len(),
             CommandType::VDel | CommandType::VDelTimeline => "delete from  where ".len(),
-            CommandType::VAddSi
+            CommandType::VRangeSi
+            | CommandType::VAddSi
             | CommandType::VUpdateSi
             | CommandType::VDelSi
             | CommandType::Unknown => {
@@ -340,7 +341,8 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
                 );
             }
-            CommandType::VAddSi
+            CommandType::VRangeSi
+            | CommandType::VAddSi
             | CommandType::VUpdateSi
             | CommandType::VDelSi
             | CommandType::Unknown => {
@@ -392,7 +394,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
 
     fn write_sql(&self, buf: &mut impl Write) -> crate::Result<()> {
         match self.vcmd.cmd {
-            CommandType::VRange => {
+            CommandType::VRange | CommandType::VRangeSi => {
                 let _ = write!(
                     buf,
                     "select {} from {} where {}",
@@ -418,6 +420,15 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
                     count,
                 ).map_err(|_| Error::RequestProtocolInvalid)?;
             }
+            CommandType::VUpdate | CommandType::VUpdateSi => {
+                let _ = write!(
+                    buf,
+                    "update {} set {} where {}",
+                    SiTable(self.strategy, self.hash),
+                    SiUpdateFields(self.strategy, &self.vcmd.fields),
+                    SiKeysAndUpdateOrDelConds(self.strategy, &self.vcmd, &self.date),
+                );
+            }
             // 2.1. 更新si：update $db$.$tb$ set count = greatest(0,cast(count as signed) - 1) where uid = ? and object_type = ? and start_date = ?
             // 2.2. 删除timeline：delete from $db$.$tb$ where uid=? and object_id=?
             // 备注：有些场景只更新si，有些场景只更新timeline，需要业务修改时考虑。
@@ -428,11 +439,27 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
                     buf,
                     "update {} set count = greatest(0,cast(count as signed) - 1) where {}",
                     SiTable(self.strategy, self.hash),
-                    SiKeysAndDelConds(self.strategy, &self.vcmd, &self.date),
+                    SiKeysAndUpdateOrDelConds(self.strategy, &self.vcmd, &self.date),
                 )
                 .map_err(|_| Error::RequestProtocolInvalid)?;
             }
-            _ => {
+            CommandType::VCard => {
+                let fields = self.vcmd.fields.first().map_or(None, |f| Some(f));
+                let _ = write!(
+                    buf,
+                    "select {} from {} where {}",
+                    SiCardCols(self.strategy, fields),
+                    SiTable(self.strategy, self.hash),
+                    SiKeysAndConds(self.strategy, &self.vcmd),
+                )
+                .map_err(|_| Error::RequestProtocolInvalid)?;
+            }
+            CommandType::VRangeTimeline
+            | CommandType::VAddTimeline
+            | CommandType::VUpdateTimeline
+            | CommandType::VDelTimeline
+            | CommandType::VGet
+            | CommandType::Unknown => {
                 //校验应该在parser_req出
                 panic!("not support cmd_type:{:?}", self.vcmd.cmd);
             }
@@ -453,6 +480,26 @@ impl<'a> Display for SiSelect<'a> {
             self.1[0],
             self.1.last().unwrap()
         )
+    }
+}
+
+struct SiKeysAndConds<'a, S>(&'a S, &'a VectorCmd);
+impl<'a, S: Strategy> Display for SiKeysAndConds<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &Self(strategy, VectorCmd { keys, wheres, .. }) = self;
+        let key_name = &strategy.keys()[0];
+        let cols = strategy.si_cols();
+        let _ = write!(f, "`{}`={}", key_name, Val(&keys[0]));
+        for w in wheres {
+            //条件中和si相同的列写入条件
+            for col in cols {
+                if w.field.equal(col.as_bytes()) {
+                    let _ = write!(f, " and {}", ConditionDisplay(w));
+                    break;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -486,6 +533,26 @@ struct SiTable<'a, S>(&'a S, i64);
 impl<'a, S: Strategy> Display for SiTable<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.write_si_database_table(f, self.1);
+        Ok(())
+    }
+}
+
+struct SiCardCols<'a, S>(&'a S, Option<&'a Field>);
+// 如果有非count计数的field，则同时返回这些field，如果有count计数的field，则只返回sum(count) as count的计数
+// 目前配置只支持一个count（带type）
+impl<'a, S: Strategy> Display for SiCardCols<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &Self(strategy, fields_origin) = self;
+        let si_cols = strategy.si_cols();
+        if let Some(field) = fields_origin {
+            if field.1.equal_ignore_case(si_cols[1].as_bytes()) {
+                let _ = write!(f, "{},sum({}) as {}", si_cols[1], si_cols[2], si_cols[2]);
+            } else {
+                return Err(std::fmt::Error);
+            }
+        } else {
+            let _ = write!(f, "sum({}) as {}", si_cols[2], si_cols[2]);
+        }
         Ok(())
     }
 }
@@ -580,8 +647,50 @@ impl<'a, S: Strategy> Display for SiInsertVals<'a, S> {
     }
 }
 
-struct SiKeysAndDelConds<'a, S>(&'a S, &'a VectorCmd, &'a NaiveDate);
-impl<'a, S: Strategy> Display for SiKeysAndDelConds<'a, S> {
+struct SiUpdateFields<'a, S: Strategy>(&'a S, &'a Vec<Field>);
+impl<'a, S: Strategy> Display for SiUpdateFields<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &Self(strategy, fields) = self;
+        // 首先对于count增减，其次对其他字段进行直接设置
+        let si_cols = strategy.si_cols();
+        let mut update_count = false;
+        for field in fields.iter() {
+            if field.0.equal_ignore_case(si_cols[2].as_bytes()) {
+                update_count = true;
+                if field.1.start_with(0, "-".as_bytes()) {
+                    let _ = write!(
+                        f,
+                        "{}=greatest(0,cast({} as signed) {})",
+                        Key(&field.0),
+                        Key(&field.0),
+                        Val(&field.1)
+                    );
+                } else {
+                    let _ = write!(
+                        f,
+                        "{}=greatest(0,cast({} as signed) + {})",
+                        Key(&field.0),
+                        Key(&field.0),
+                        Val(&field.1)
+                    );
+                }
+            }
+        }
+        for (i, field) in fields.iter().enumerate() {
+            if !field.0.equal_ignore_case(si_cols[2].as_bytes()) {
+                if i == 0 && !update_count {
+                    let _ = write!(f, "{}={}", Key(&field.0), Val(&field.1));
+                } else {
+                    let _ = write!(f, ",{}={}", Key(&field.0), Val(&field.1));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+struct SiKeysAndUpdateOrDelConds<'a, S>(&'a S, &'a VectorCmd, &'a NaiveDate);
+impl<'a, S: Strategy> Display for SiKeysAndUpdateOrDelConds<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self(strategy, VectorCmd { keys, wheres, .. }, date) = self;
         for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
@@ -591,18 +700,25 @@ impl<'a, S: Strategy> Display for SiKeysAndDelConds<'a, S> {
                 } else {
                     let _ = write!(f, " and `{}`={}", key, Val(&keys[i]));
                 }
+                break;
             }
         }
         let mut has_count_type = false;
         let si_cols = strategy.si_cols();
         for w in wheres {
+            let mut added = false;
             //条件中和si相同的列写入条件
             for col in si_cols {
                 if w.field.equal(col.as_bytes()) {
                     let _ = write!(f, " and {}", ConditionDisplay(w));
                     has_count_type = true;
+                    added = true;
                     break;
                 }
+            }
+            // TODO 这里加额外条件，待细化测试验证  fishermen
+            if !added {
+                let _ = write!(f, " and {}", ConditionDisplay(w));
             }
         }
         log::info!("+++ ==== si cols {} / {}", si_cols.len(), has_count_type);
