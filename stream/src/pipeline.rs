@@ -172,9 +172,15 @@ where
 
             let op = ctx.request().operation();
             if let Some(rsp) = response {
-                if ctx.is_write_back() && rsp.ok() {
+                let rsp_ok = rsp.ok();
+                if ctx.is_write_back() && rsp_ok {
                     ctx.async_write_back(&self.parser, rsp, self.top.exp_sec(), &mut self.metrics);
                     self.async_pending.push_back(ctx);
+                }
+
+                // 不区分是否last，这样更精确的感知总的异常响应数量
+                if self.parser.metric_err() && !rsp_ok {
+                    *self.metrics.err() += 1;
                 }
             }
 

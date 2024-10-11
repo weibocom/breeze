@@ -190,6 +190,12 @@ impl Protocol for MemcacheBinary {
             None
         }
     }
+
+    // mc目前不需要统计error，因为mc的error基本都是get miss，del not-found这种，这种错误不需要统计
+    #[inline]
+    fn metric_err(&self) -> bool {
+        false
+    }
 }
 impl MemcacheBinary {
     // 根据req构建response，status为mc协议status，共11种

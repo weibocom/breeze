@@ -19,6 +19,7 @@ pub struct Handler<'r, Req, P, S> {
     s: S,
     parser: P,
     rtt: Metric,
+    err: Metric,
     host_metric: HostMetric,
 
     num: Number,
@@ -63,12 +64,14 @@ where
         data.enable();
         let name = path.clone();
         let rtt = path.rtt("req");
+        let err = path.qps("err");
         Self {
             data,
             pending: VecDeque::with_capacity(31),
             s,
             parser,
             rtt,
+            err,
             host_metric: HostMetric::from(path),
             num: Number::default(),
             req_buf: Vec::with_capacity(4),
@@ -142,8 +145,12 @@ where
                 }
                 let (req, start) = self.pending.pop_front().expect("take response");
                 self.num.rx();
-                // 统计请求耗时。
+                // 统计请求耗时、异常响应
                 self.rtt += start.elapsed();
+                if self.parser.metric_err() && !cmd.ok() {
+                    self.err += 1;
+                }
+
                 self.parser.check(&*req, &cmd);
                 req.on_complete(cmd);
                 continue;
