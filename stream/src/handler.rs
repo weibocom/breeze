@@ -64,7 +64,7 @@ where
         data.enable();
         let name = path.clone();
         let rtt = path.rtt("req");
-        let err = path.qps("err");
+        let err = path.qps("be_err");
         Self {
             data,
             pending: VecDeque::with_capacity(31),
