@@ -12,9 +12,15 @@ use sharding::{
 fn bkdrsub_one() {
     let hasher = Hasher::from("bkdrsub");
 
-    let key1 = "mfh15d#3940964349989430";
+    let key1 = "otdn#1042015:carSubBrand_e4ab74c125e9e95edad691ffe9820118";
     let hash1 = hasher.hash(&key1.as_bytes());
-    println!("key:{}, hash:{}, idx:{}", key1, hash1, hash1 % 180);
+
+    let shards = 1080;
+    let servers = vec!["padding".to_string(); shards];
+    let dist = Distribute::from("modrange-8640", &servers);
+    let dist_idx = dist.index(hash1);
+
+    println!("key:{}, hash:{}, idx:{}", key1, hash1, dist_idx);
 }
 
 // TODO 临时批量文件的hash、dist校验测试，按需打开
