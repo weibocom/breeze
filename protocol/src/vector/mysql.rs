@@ -408,16 +408,24 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
             // 备注：有些场景只更新si，有些场景只更新timeline，需要业务修改时考虑。
             // 1.3. mesh cmd: vadd $uid,$date object_type $obj_type object_id $obj_id like_id $like_id
             CommandType::VAdd | CommandType::VAddSi => {
-                let count = self.strategy.si_cols().last().unwrap();
+                let count_col_name = self.strategy.si_cols().last().unwrap();
                 //对si表的更新插入至少需要keys + count + counttype 这些字段，下面会兜底校验
+                let si_insert_vals = SiInsertVals(
+                    self.strategy,
+                    &self.date,
+                    &self.vcmd.keys,
+                    &self.vcmd.fields,
+                );
+                let count = si_insert_vals.count_in_field();
                 write!(
                     buf,
-                    "insert into {} ({}) values ({}) on duplicate key update {}=greatest(0, cast({} as signed) + 1)",
+                    "insert into {} ({}) values ({}) on duplicate key update {}=greatest(0, cast({} as signed) + {})",
                     SiTable(self.strategy, self.hash),
                     SiInsertCols(self.strategy, &self.vcmd.fields),
-                    SiInsertVals(self.strategy,&self.date, &self.vcmd.keys, &self.vcmd.fields),
-                    count,
-                    count,
+                    si_insert_vals,
+                    count_col_name,
+                    count_col_name,
+                    count
                 ).map_err(|_| Error::RequestProtocolInvalid)?;
             }
             CommandType::VUpdate | CommandType::VUpdateSi => {
@@ -603,6 +611,26 @@ impl<'a, S: Strategy> Display for SiInsertCols<'a, S> {
 }
 
 struct SiInsertVals<'a, S>(&'a S, &'a NaiveDate, &'a Vec<RingSlice>, &'a Vec<Field>);
+impl<'a, S: Strategy> SiInsertVals<'a, S> {
+    pub(crate) fn count_in_field(&self) -> i32 {
+        let &Self(strategy, _date, _keys, fields) = self;
+        let si_cols = strategy.si_cols();
+        for field in fields {
+            // 目前配置限制了count只能支持1种类型，先打通，后续需要调整配置，以支持多种count fishermen
+            // si cols 当前格式：stat_date,type,count
+            assert_eq!(si_cols.len(), 3);
+            if field.0.equal(si_cols[2].as_bytes()) {
+                let count_slice = field.1;
+                if count_slice.at(0) == '-' as u8 {
+                    return -1 * (count_slice.str_num(1..) as i32);
+                } else {
+                    return count_slice.str_num(..) as i32;
+                }
+            }
+        }
+        return 1;
+    }
+}
 impl<'a, S: Strategy> Display for SiInsertVals<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let &Self(strategy, date, keys, fields) = self;
@@ -616,21 +644,14 @@ impl<'a, S: Strategy> Display for SiInsertVals<'a, S> {
             }
         }
         let si_cols = strategy.si_cols();
-        let count_origin = "1".as_bytes().to_vec();
-        let mut count = RingSlice::from_vec(&count_origin);
+        let count = self.count_in_field();
         for field in fields {
             // 目前配置限制了count只能支持1种类型，先打通，后续需要调整配置，以支持多种count fishermen
-            // for col in si_cols {
-            //     if field.0.equal(col.as_bytes()) {
-            //         let _ = write!(f, ",{}", Val(&field.1));
-            //     }
-            // }
+            // si cols 当前格式：stat_date,type,count
             assert_eq!(si_cols.len(), 3);
             if field.0.equal(si_cols[1].as_bytes()) {
                 let _ = write!(f, ",{}", Val(&field.1));
-            }
-            if field.0.equal(si_cols[2].as_bytes()) {
-                count = field.1;
+                break;
             }
         }
         //date,count
@@ -641,7 +662,7 @@ impl<'a, S: Strategy> Display for SiInsertVals<'a, S> {
             date.year(),
             date.month(),
             date.day(),
-            Val(&count)
+            count
         );
         Ok(())
     }
