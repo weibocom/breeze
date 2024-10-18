@@ -305,7 +305,8 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     Select(self.vcmd.fields.get(0)),
                     Table(self.strategy, &self.date, self.hash),
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
-                );
+                )
+                .map_err(|_| Error::RequestProtocolInvalid)?;
             }
             CommandType::VCard => {
                 let _ = write!(
@@ -313,7 +314,8 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     "select count(*) from {} where {}",
                     Table(self.strategy, &self.date, self.hash),
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
-                );
+                )
+                .map_err(|_| Error::RequestProtocolInvalid)?;
             }
             CommandType::VAdd | CommandType::VAddTimeline => {
                 let _ = write!(
@@ -322,7 +324,8 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     Table(self.strategy, &self.date, self.hash),
                     InsertCols(self.strategy, &self.vcmd.fields),
                     InsertVals(self.strategy, &self.vcmd.keys, &self.vcmd.fields),
-                );
+                )
+                .map_err(|_| Error::RequestProtocolInvalid)?;
             }
             CommandType::VUpdate | CommandType::VUpdateTimeline => {
                 let _ = write!(
@@ -331,7 +334,8 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     Table(self.strategy, &self.date, self.hash),
                     UpdateFields(&self.vcmd.fields),
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
-                );
+                )
+                .map_err(|_| Error::RequestProtocolInvalid)?;
             }
             CommandType::VDel | CommandType::VDelTimeline => {
                 let _ = write!(
@@ -339,7 +343,8 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
                     "delete from {} where {}",
                     Table(self.strategy, &self.date, self.hash),
                     KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
-                );
+                )
+                .map_err(|_| Error::RequestProtocolInvalid)?;
             }
             CommandType::VRangeSi
             | CommandType::VAddSi
@@ -401,7 +406,8 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
                     SiSelect(self.strategy.keys(), self.strategy.si_cols()),
                     SiTable(self.strategy, self.hash),
                     SiKeysAndCondsAndOrder(self.strategy, &self.vcmd),
-                );
+                )
+                .map_err(|_| Error::RequestProtocolInvalid)?;
             }
             // 1.1. 更新si： insert into $db$.$tb$ (uid, object_type, start_date, count) values (?, ?, ?, 1) on duplicate key update count=greatest(0, cast(count as signed) + 1)。
             // 1.2. 根据设置更新timeline：insert into $db$.$tb$ (uid, object_type, like_id, object_id) values (?, ?, ?, ?)
@@ -435,12 +441,13 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
                     SiTable(self.strategy, self.hash),
                     SiUpdateFields(self.strategy, &self.vcmd.fields),
                     SiKeysAndUpdateOrDelConds(self.strategy, &self.vcmd, &self.date),
-                );
+                )
+                .map_err(|_| Error::RequestProtocolInvalid)?;
             }
             // 2.1. 更新si：update $db$.$tb$ set count = greatest(0,cast(count as signed) - 1) where uid = ? and object_type = ? and start_date = ?
             // 2.2. 删除timeline：delete from $db$.$tb$ where uid=? and object_id=?
             // 备注：有些场景只更新si，有些场景只更新timeline，需要业务修改时考虑。
-            // 1.3. mesh cmd: vdel $uid,$date where object_type = $obj_type object_id = $obj_id
+            // 2.3. mesh cmd: vdel $uid,$date where object_type = $obj_type object_id = $obj_id
             CommandType::VDel | CommandType::VDelSi => {
                 //对si表的更新插入至少需要keys + count + counttype 这些字段，下面会兜底校验
                 write!(
@@ -679,20 +686,22 @@ impl<'a, S: Strategy> Display for SiUpdateFields<'a, S> {
             if field.0.equal_ignore_case(si_cols[2].as_bytes()) {
                 update_count = true;
                 if field.1.start_with(0, "-".as_bytes()) {
+                    let count = field.1.str_num(1..);
                     let _ = write!(
                         f,
-                        "{}=greatest(0,cast({} as signed) {})",
+                        "{}=greatest(0,cast({} as signed) - {})",
                         Key(&field.0),
                         Key(&field.0),
-                        Val(&field.1)
+                        count
                     );
                 } else {
+                    let count = field.1.str_num(..);
                     let _ = write!(
                         f,
                         "{}=greatest(0,cast({} as signed) + {})",
                         Key(&field.0),
                         Key(&field.0),
-                        Val(&field.1)
+                        count,
                     );
                 }
             }
@@ -731,8 +740,8 @@ impl<'a, S: Strategy> Display for SiKeysAndUpdateOrDelConds<'a, S> {
             //条件中和si相同的列写入条件
             for col in si_cols {
                 if w.field.equal(col.as_bytes()) {
-                    let _ = write!(f, " and {}", ConditionDisplay(w));
                     has_count_type = true;
+                    let _ = write!(f, " and {}", ConditionDisplay(w));
                     added = true;
                     break;
                 }
@@ -745,6 +754,7 @@ impl<'a, S: Strategy> Display for SiKeysAndUpdateOrDelConds<'a, S> {
         log::info!("+++ ==== si cols {} / {}", si_cols.len(), has_count_type);
         //必须提供count_type
         if si_cols.len() > 2 && !has_count_type {
+            log::debug!("++++ don't has count type");
             return Err(std::fmt::Error);
         }
         //date
