@@ -35,6 +35,36 @@ fn aggregation_vrange() {
 }
 
 #[test]
+fn aggregation_vget() {
+    let mut conn = get_conn(&RESTYPE.get_host());
+    let like_by_me = LikeByMe {
+        uid: 7916804453,
+        like_id: 5078096628678703,
+        object_id: 5078096628678703,
+        object_type: 1,
+    };
+
+    // vrange 获取最新的1条
+    let rsp: Result<Value, RedisError> = redis::cmd("vget")
+        .arg(format!("{}", like_by_me.uid))
+        .arg("field")
+        .arg("object_type,like_id,object_id")
+        .arg("where")
+        .arg("like_id")
+        .arg("=")
+        .arg(like_by_me.like_id)
+        .arg("object_type")
+        .arg("=")
+        .arg(like_by_me.object_type)
+        .arg("object_id")
+        .arg("=")
+        .arg(like_by_me.object_id)
+        .query(&mut conn);
+
+    println!("++ rsp:{:?}", rsp);
+}
+
+#[test]
 fn aggregation_vadd_vrange_vdel() {
     let mut conn = get_conn(&RESTYPE.get_host());
     let like_by_me = LikeByMe {
