@@ -241,7 +241,7 @@ pub enum CommandType {
     VAddTimeline,
     VAddSi,
     VUpdateTimeline,
-    VUpdateSi,
+    VUpdateSi, // 注意对于si，update只是基于count的incr、decr，并不是普通意义上的直接设置为某值
     VDelTimeline,
     VDelSi,
 
