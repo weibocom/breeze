@@ -128,6 +128,10 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn max_tries(&self, _req_op: Operation) -> u8 {
         1_u8
     }
+
+    fn metric_err(&self) -> bool {
+        true
+    }
 }
 
 pub trait RequestProcessor {
