@@ -1,6 +1,7 @@
 pub mod bkdr;
 pub mod bkdrabscrc32;
 pub mod bkdrsub;
+pub mod bkdrsubstr;
 pub mod crc32;
 pub mod crc32local;
 pub mod crc64;
@@ -25,8 +26,8 @@ pub use rawsuffix::RawSuffix;
 
 pub mod crc;
 
+use self::{bkdrsub::Bkdrsub, bkdrsubstr::Bkdrsubstr, crc64::Crc64, fnv1::Fnv1F32, fnv1::Fnv1aF64};
 use enum_dispatch::enum_dispatch;
-use self::{bkdrsub::Bkdrsub, crc64::Crc64, fnv1::Fnv1F32, fnv1::Fnv1aF64};
 
 // 占位hash，主要用于兼容服务框架，供mq等业务使用
 pub const HASH_PADDING: &str = "padding";
@@ -71,6 +72,7 @@ pub enum Hasher {
     Bkdr(Bkdr),
     Bkdrsub(Bkdrsub),
     BkdrAbsCrc32(BkdrAbsCrc32), // 混合三种hash：先bkdr，再abs，最后进行crc32计算
+    Bkdrsubstr(Bkdrsubstr),     // 类似Bkdrsub，但第二个分隔符不是'_"，而是'-'后的字符串
     Crc32(Crc32),
     Crc32Short(Crc32Short),         // mc short crc32
     Crc32Num(Crc32Num),             // crc32 for a hash key whick is a num,
@@ -162,6 +164,7 @@ impl Hasher {
                 _ => Self::Crc32localDelimiter(Crc32localDelimiter::from(alg_lower.as_str())),
             },
             "rawsuffix" => Self::RawSuffix(RawSuffix::from(alg_lower.as_str())),
+            "bkdrsubstr" => Self::Bkdrsubstr(Bkdrsubstr::from(alg_lower.as_str())),
             _ => {
                 log::error!("found unknow hash: {} use crc32 instead", alg);
                 Self::Crc32(Default::default())
