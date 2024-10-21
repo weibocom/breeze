@@ -17,8 +17,8 @@ pub struct Bkdrsubstr {
 impl Bkdrsubstr {
     pub fn from(alg: &str) -> Self {
         let alg_parts: Vec<&str> = alg.split(super::HASHER_NAME_DELIMITER).collect();
-        debug_assert!(alg_parts.len() == 2);
-        debug_assert_eq!(alg_parts[0], "bkdrsubstr");
+        assert!(alg_parts.len() == 2);
+        assert_eq!(alg_parts[0], "bkdrsubstr");
         let markerstr = alg_parts[1].as_bytes().to_vec();
         return Self {
             len: markerstr.len() as u8,
