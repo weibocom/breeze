@@ -250,6 +250,12 @@ impl Protocol for Kv {
     {
         None
     }
+
+    // kv目前也不统计error，因为kv走mc binary协议，error基本都是get miss这种，不需要统计
+    #[inline]
+    fn metric_err(&self) -> bool {
+        false
+    }
 }
 
 impl Kv {
