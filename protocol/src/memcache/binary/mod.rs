@@ -10,8 +10,8 @@ pub use packet::Binary;
 pub struct MemcacheBinary;
 
 use crate::{
-    Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, Protocol, RequestProcessor,
-    Result, Stream, Writer,
+    Command, Commander, Error, Flag, HashedCommand, Metric, MetricItem, Operation, Protocol,
+    RequestProcessor, Result, Stream, Writer,
 };
 
 use sharding::hash::Hash;
@@ -193,7 +193,7 @@ impl Protocol for MemcacheBinary {
 
     // mc目前不需要统计error，因为mc的error基本都是get miss，del not-found这种，这种错误不需要统计
     #[inline]
-    fn metric_err(&self) -> bool {
+    fn metric_err(&self, _req_op: Operation) -> bool {
         false
     }
 }

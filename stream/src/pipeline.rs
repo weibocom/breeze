@@ -179,7 +179,7 @@ where
                 }
 
                 // 不区分是否last，这样更精确的感知总的异常响应数量
-                if self.parser.metric_err() && !rsp_ok {
+                if self.parser.metric_err(op) && !rsp_ok {
                     *self.metrics.err() += 1;
                 }
             }

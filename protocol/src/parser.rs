@@ -129,7 +129,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         1_u8
     }
 
-    fn metric_err(&self) -> bool {
+    fn metric_err(&self, _req_op: Operation) -> bool {
         true
     }
 }
