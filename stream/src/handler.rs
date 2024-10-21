@@ -147,7 +147,7 @@ where
                 self.num.rx();
                 // 统计请求耗时、异常响应
                 self.rtt += start.elapsed();
-                if self.parser.metric_err() && !cmd.ok() {
+                if self.parser.metric_err(req.operation()) && !cmd.ok() {
                     self.err += 1;
                 }
 
