@@ -121,7 +121,7 @@ impl Hasher {
                 HASH_PADDING => Self::Padding(Default::default()),
                 "bkdr" => Self::Bkdr(Default::default()),
                 "bkdrsub" => Self::BkdrsubDelimiter(BkdrsubDelimiter::from('_' as u8)),
-                "bkdrsubh" => Self::BkdrsubDelimiter(BkdrsubDelimiter::from('^' as u8)),
+                "bkdrsubhat" => Self::BkdrsubDelimiter(BkdrsubDelimiter::from('^' as u8)),
                 "bkdrabscrc32" => Self::BkdrAbsCrc32(Default::default()),
                 "raw" => Self::Raw(Raw::from(Default::default())),
                 "crc32" => Self::Crc32(Default::default()),

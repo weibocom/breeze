@@ -79,17 +79,17 @@ mod hash_test {
         assert_eq!(hash2, 1108486745);
     }
     #[test]
-    fn bkdrsubh() {
-        let hasher = Hasher::from("bkdrsubh");
+    fn bkdrsubhat() {
+        let hasher = Hasher::from("bkdrsubhat");
 
         let key1 = "abc#12345678901234567";
         let hash1 = hasher.hash(&key1.as_bytes());
-        println!("bkdrsubh key:{}, hash:{}", key1, hash1);
+        println!("bkdrsubhat key:{}, hash:{}", key1, hash1);
         assert_eq!(hash1, 1108486745);
 
         let key2 = "abc#12345678901234567^123456";
         let hash2 = hasher.hash(&key2.as_bytes());
-        println!("bkdrsubh key:{}, hash:{}", key2, hash2);
+        println!("bkdrsubhat key:{}, hash:{}", key2, hash2);
         assert_eq!(hash2, 1108486745);
     }
 
