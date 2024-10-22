@@ -20,9 +20,24 @@ fn bkdrsub_one() {
     let dist = Distribute::from("modrange-8640", &servers);
     let dist_idx = dist.index(hash1);
 
-    println!("key:{}, hash:{}, idx:{}", key1, hash1, dist_idx);
+    println!("bkdrsub key:{}, hash:{}, idx:{}", key1, hash1, dist_idx);
+    assert_eq!(dist_idx, 905)
 }
+#[test]
+fn bkdrsubh_one() {
+    let hasher = Hasher::from("bkdrsubh");
 
+    let key1 = "otdn#1042015:carSubBrand^e4ab74c125e9e95edad691ffe9820118";
+    let hash1 = hasher.hash(&key1.as_bytes());
+
+    let shards = 1080;
+    let servers = vec!["padding".to_string(); shards];
+    let dist = Distribute::from("modrange-8640", &servers);
+    let dist_idx = dist.index(hash1);
+
+    println!("bkdrsubh key:{}, hash:{}, idx:{}", key1, hash1, dist_idx);
+    assert_eq!(dist_idx, 905)
+}
 // TODO 临时批量文件的hash、dist校验测试，按需打开
 #[test]
 fn bkdrsub_dist() {
