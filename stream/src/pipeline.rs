@@ -138,7 +138,7 @@ where
         parser
             .parse_request(client, top, &mut processor)
             .map_err(|e| {
-                log::info!("+++ parse request error: {:?} on client:{:?}", e, client);
+                log::warn!("+++ parse request error: {:?} on client:{:?}", e, client);
                 match e {
                     FlushOnClose(ref emsg) => {
                         // 此处只处理FLushOnClose，用于发送异常给client
