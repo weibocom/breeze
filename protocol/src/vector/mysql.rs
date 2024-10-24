@@ -163,7 +163,7 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
         let &Self(
             strategy,
             vcmd @ VectorCmd {
-                cmd: _,
+                cmd,
                 route: _,
                 keys,
                 fields: _,
@@ -174,6 +174,21 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
             },
             extra,
         ) = self;
+
+        // 对于vupdate、vdel，必须得有where语句
+        match cmd {
+            CommandType::VUpdate
+            | CommandType::VDel
+            | CommandType::VUpdateTimeline
+            | CommandType::VDelTimeline => {
+                if wheres.len() == 0 {
+                    log::warn!("+++ ignore vdel/vupdate without where condition");
+                    return Err(std::fmt::Error);
+                }
+            }
+            _ => {}
+        }
+
         for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
             if let KeysType::Keys(key) = key {
                 if i == 0 {
@@ -399,7 +414,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
 
     fn write_sql(&self, buf: &mut impl Write) -> crate::Result<()> {
         match self.vcmd.cmd {
-            CommandType::VRange | CommandType::VRangeSi => {
+            CommandType::VRange | CommandType::VRangeSi | CommandType::VGet => {
                 let _ = write!(
                     buf,
                     "select {} from {} where {}",
@@ -473,7 +488,6 @@ impl<'a, S: Strategy> VectorSqlBuilder for SiSqlBuilder<'a, S> {
             | CommandType::VAddTimeline
             | CommandType::VUpdateTimeline
             | CommandType::VDelTimeline
-            | CommandType::VGet
             | CommandType::Unknown => {
                 //校验应该在parser_req出
                 panic!("not support cmd_type:{:?}", self.vcmd.cmd);
@@ -722,7 +736,16 @@ impl<'a, S: Strategy> Display for SiUpdateFields<'a, S> {
 struct SiKeysAndUpdateOrDelConds<'a, S>(&'a S, &'a VectorCmd, &'a NaiveDate);
 impl<'a, S: Strategy> Display for SiKeysAndUpdateOrDelConds<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let &Self(strategy, VectorCmd { keys, wheres, .. }, date) = self;
+        let &Self(
+            strategy,
+            VectorCmd {
+                route,
+                keys,
+                wheres,
+                ..
+            },
+            date,
+        ) = self;
         for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
             if let KeysType::Keys(key) = key {
                 if i == 0 {
@@ -746,8 +769,8 @@ impl<'a, S: Strategy> Display for SiKeysAndUpdateOrDelConds<'a, S> {
                     break;
                 }
             }
-            // TODO 这里加额外条件，待细化测试验证  fishermen
-            if !added {
+            // 聚合查询会带入timeline的额外条件，不需要带入sql;只在si查询才需要增加这些条件  fishermen
+            if !route.expect("aggregation").is_aggregation() && !added {
                 let _ = write!(f, " and {}", ConditionDisplay(w));
             }
         }

@@ -103,10 +103,9 @@ impl Aggregation {
 
     pub fn get_date(&self, cmd: CommandType, keys: &[RingSlice]) -> Result<NaiveDate, Error> {
         match cmd {
-            CommandType::VRange
-            | CommandType::VGet
-            | CommandType::VCard
-            | CommandType::VRangeSi => Ok(NaiveDate::default()),
+            CommandType::VRange | CommandType::VCard | CommandType::VRangeSi => {
+                Ok(NaiveDate::default())
+            }
             //相比vrange多了一个日期key
             _ => {
                 let date = keys.last().unwrap();
@@ -170,17 +169,15 @@ impl Aggregation {
         vcmd: &protocol::vector::VectorCmd,
     ) -> protocol::Result<()> {
         match vcmd.cmd {
-            CommandType::VRange
-            | CommandType::VGet
-            | CommandType::VCard
-            | CommandType::VRangeSi => {
+            CommandType::VRange | CommandType::VCard | CommandType::VRangeSi => {
                 if vcmd.keys.len() != self.keys().len() - 1 {
                     return Err(Error::RequestProtocolInvalid);
                 }
                 Ok(())
             }
             //相比vrange多了一个日期key
-            CommandType::VAdd
+            CommandType::VGet
+            | CommandType::VAdd
             | CommandType::VDel
             | CommandType::VUpdate
             | CommandType::VAddTimeline
