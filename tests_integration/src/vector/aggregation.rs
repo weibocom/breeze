@@ -47,20 +47,20 @@ fn aggregation_vdel_like() {
     };
 
     // vadd 加一个id较大的like_by_me，同时更新si、timeline
-    // let rsp: Result<u32, redis::RedisError> = redis::cmd("vadd")
-    //     .arg(format!("{},2409", like_by_me.uid))
-    //     .arg("object_type")
-    //     .arg(like_by_me.object_type)
-    //     .arg("like_id")
-    //     .arg(like_by_me.like_id)
-    //     .arg("object_id")
-    //     .arg(like_by_me.object_id)
-    //     .query(&mut conn);
+    let rsp: Result<u32, redis::RedisError> = redis::cmd("vadd")
+        .arg(format!("{},2409", like_by_me.uid))
+        .arg("object_type")
+        .arg(like_by_me.object_type)
+        .arg("like_id")
+        .arg(like_by_me.like_id)
+        .arg("object_id")
+        .arg(like_by_me.object_id)
+        .query(&mut conn);
 
-    // println!("+++ vadd rsp:{:?}", rsp);
-    // let rsp = rsp.unwrap();
-    // assert!(rsp == (1 + 1) || rsp == (2 + 1));
-    // sleep(Duration::from_secs(2));
+    println!("+++ vadd rsp:{:?}", rsp);
+    let rsp = rsp.unwrap();
+    assert!(rsp == (1 + 1) || rsp == (2 + 1));
+    sleep(Duration::from_secs(2));
 
     // 删除新插入的记录
     let rsp: Result<u32, redis::RedisError> = redis::cmd("vdel")
