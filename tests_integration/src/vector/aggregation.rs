@@ -1,3 +1,5 @@
+use std::{thread::sleep, time::Duration};
+
 use redis::{RedisError, Value};
 
 use super::byme::*;
@@ -35,18 +37,75 @@ fn aggregation_vrange() {
 }
 
 #[test]
-fn aggregation_vget() {
+fn aggregation_vdel_like() {
     let mut conn = get_conn(&RESTYPE.get_host());
     let like_by_me = LikeByMe {
-        uid: 7916804453,
+        uid: 791680445,
         like_id: 5078096628678703,
         object_id: 5078096628678703,
         object_type: 1,
     };
 
+    // vadd 加一个id较大的like_by_me，同时更新si、timeline
+    // let rsp: Result<u32, redis::RedisError> = redis::cmd("vadd")
+    //     .arg(format!("{},2409", like_by_me.uid))
+    //     .arg("object_type")
+    //     .arg(like_by_me.object_type)
+    //     .arg("like_id")
+    //     .arg(like_by_me.like_id)
+    //     .arg("object_id")
+    //     .arg(like_by_me.object_id)
+    //     .query(&mut conn);
+
+    // println!("+++ vadd rsp:{:?}", rsp);
+    // let rsp = rsp.unwrap();
+    // assert!(rsp == (1 + 1) || rsp == (2 + 1));
+    // sleep(Duration::from_secs(2));
+
+    // 删除新插入的记录
+    let rsp: Result<u32, redis::RedisError> = redis::cmd("vdel")
+        .arg(format!("{},2409", like_by_me.uid))
+        .arg("where")
+        .arg("object_id")
+        .arg("=")
+        .arg(like_by_me.object_id)
+        .arg("object_type")
+        .arg("=")
+        .arg(like_by_me.object_type)
+        .query(&mut conn);
+
+    assert_eq!(Ok(2), rsp);
+}
+
+#[test]
+fn aggregation_vget() {
+    let mut conn = get_conn(&RESTYPE.get_host());
+    let like_by_me = LikeByMe {
+        uid: 791680445,
+        like_id: 5078096628678703,
+        object_id: 5078096628678703,
+        object_type: 1,
+    };
+
+    // vadd 加一个id较大的like_by_me，同时更新si、timeline
+    let rsp: Result<u32, redis::RedisError> = redis::cmd("vadd")
+        .arg(format!("{},2409", like_by_me.uid))
+        .arg("object_type")
+        .arg(like_by_me.object_type)
+        .arg("like_id")
+        .arg(like_by_me.like_id)
+        .arg("object_id")
+        .arg(like_by_me.object_id)
+        .query(&mut conn);
+
+    println!("+++ vadd rsp:{:?}", rsp);
+    let rsp = rsp.unwrap();
+    assert!(rsp == (1 + 1) || rsp == (2 + 1));
+    sleep(Duration::from_secs(2));
+
     // vrange 获取最新的1条
     let rsp: Result<Value, RedisError> = redis::cmd("vget")
-        .arg(format!("{}", like_by_me.uid))
+        .arg(format!("{},2409", like_by_me.uid))
         .arg("field")
         .arg("object_type,like_id,object_id")
         .arg("where")
@@ -62,6 +121,20 @@ fn aggregation_vget() {
         .query(&mut conn);
 
     println!("++ rsp:{:?}", rsp);
+
+    // 删除新插入的记录
+    let rsp: Result<u32, redis::RedisError> = redis::cmd("vdel")
+        .arg(format!("{},2409", like_by_me.uid))
+        .arg("where")
+        .arg("object_id")
+        .arg("=")
+        .arg(like_by_me.object_id)
+        .arg("object_type")
+        .arg("=")
+        .arg(like_by_me.object_type)
+        .query(&mut conn);
+
+    assert_eq!(Ok(2), rsp);
 }
 
 #[test]
