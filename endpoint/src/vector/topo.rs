@@ -203,44 +203,8 @@ where
                     // 非aggregation请求的场景，不需要构建attachement
                     self.reshape_and_get_shard(req, Some(vcmd), 0)?
                 }
-
-                // ===============  抽取si shard
-                // //上行请求不需要初始化leftcount
-                // let date = self.strategist.get_date(vcmd.cmd, &vcmd.keys)?;
-                // let si_sql = SiSqlBuilder::new(&vcmd, req.hash(), date, &self.strategist)?;
-                // let cmd = MysqlBuilder::build_packets_for_vector(si_sql)?;
-                // req.reshape(MemGuard::from_vec(cmd));
-
-                // let si_shard_idx = self.strategist.si_distribution().index(req.hash());
-                // req.ctx_mut().shard_idx = si_shard_idx as u16;
-                // req.attach_mut().vcmd = vcmd;
-                // req.set_next_round(true);
-
-                // &self.si_shard[si_shard_idx]
-                // ===============  抽取si shard
             } else {
                 assert!(req.get_next_round());
-                // let (last, limit, date) = self.sql_info(req, req.attach().round)?;
-                // let vector_builder = SqlBuilder::new(
-                //     &req.attach().vcmd,
-                //     req.hash(),
-                //     date,
-                //     &self.strategist,
-                //     limit as u64,
-                // )?;
-                // let cmd = MysqlBuilder::build_packets_for_vector(vector_builder)?;
-
-                // if last {
-                //     req.set_next_round(false);
-                // }
-                // req.reshape(MemGuard::from_vec(cmd));
-                // //获取shard
-                // let shard_idx = self.shard_idx(req.hash());
-                // req.ctx_mut().year = date.year() as u16;
-                // req.ctx_mut().shard_idx = shard_idx as u16;
-                // let shards = self.shards.get(date.year() as u16);
-                // shards.get(shard_idx).ok_or(protocol::Error::TopInvalid)?
-
                 assert!(req.attachment().is_some());
                 self.reshape_and_get_shard(req, None, req.attach().round)?
             };
@@ -348,7 +312,6 @@ where
     ) -> Result<(bool, NaiveDate), protocol::Error> {
         let (next_round, limit, date) = self.get_timeline_query_param(req, &unbound_vcmd, round)?;
 
-        // let vcmd = unbound_vcmd.as_ref().unwrap_or(&req.attach().vcmd);
         let vcmd = unbound_vcmd
             .as_ref()
             .or_else(|| Some(&req.attach().vcmd))
