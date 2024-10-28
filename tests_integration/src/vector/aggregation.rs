@@ -37,6 +37,23 @@ fn aggregation_vrange() {
 }
 
 #[test]
+fn aggregation_vcard(uid: i64, conn: &mut Connection) -> Result<Value, RedisError> {
+    let mut conn = get_conn(&RESTYPE.get_host());
+    let like_by_me = LikeByMe {
+        uid: 7916804453,
+        like_id: 5078096628678703,
+        object_id: 5078096628678703,
+        object_type: 1,
+    };
+
+    let by_me_si = aggregation_vcard_local(&mut conn, &like_by_me);
+
+    println!("si: {:?}", by_me_si);
+    Ok(by_me_si)
+}
+
+
+#[test]
 fn aggregation_vdel_like() {
     let mut conn = get_conn(&RESTYPE.get_host());
     let like_by_me = LikeByMe {
