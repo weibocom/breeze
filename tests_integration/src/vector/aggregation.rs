@@ -1,6 +1,6 @@
 use std::{thread::sleep, time::Duration};
 
-use redis::{RedisError, Value};
+use redis::{Connection, RedisError, Value};
 
 use super::byme::*;
 
@@ -293,20 +293,8 @@ fn aggregation_vadd_si() -> Result<(), RedisError> {
     let rsp = rsp.unwrap();
     assert!(rsp == 1 || rsp == 2);
 
-    let by_me_si: Value = redis::cmd("vcard")
-        .arg(format!("{}", si.uid))
-        .arg("field")
-        .arg("object_type")
-        .arg("where")
-        .arg("object_type")
-        .arg("in")
-        .arg("1,2,3,100")
-        .arg("group")
-        .arg("by")
-        .arg("object_type")
-        .query(&mut conn)?;
-
-    println!("si: {:?}", by_me_si);
+    let by_me_si = aggregation_vcard_local(si.uid, &mut conn)?;
+    print!("after vadd si, vcard now: {:?}", by_me_si);
 
     Ok(())
 }
@@ -340,18 +328,8 @@ fn aggregation_vupdate_si() -> Result<(), RedisError> {
     let rsp = rsp.unwrap();
     assert!(rsp == 1 || rsp == 2);
 
-    let by_me_si: Value = redis::cmd("vcard")
-        .arg(format!("{}", si.uid))
-        .arg("field")
-        .arg("object_type")
-        .arg("where")
-        .arg("object_type")
-        .arg("in")
-        .arg("1,2,3,100")
-        .arg("group")
-        .arg("by")
-        .arg("object_type")
-        .query(&mut conn)?;
+    let by_me_si = aggregation_vcard_local(si.uid, &mut conn)?;
+    print!("after vupdate si, vcard now: {:?}", by_me_si);
 
     println!("si: {:?}", by_me_si);
 
@@ -381,8 +359,15 @@ fn aggregation_vdel_si() -> Result<(), RedisError> {
     let rsp = rsp.unwrap();
     assert!(rsp == 1 || rsp == 2);
 
+    let value = aggregation_vcard_local(si.uid, &mut conn)?;
+    print!("after vdel si, vcard now: {:?}", value);
+    Ok(())
+}
+
+fn aggregation_vcard_local(uid: i64, conn: &mut Connection) -> Result<Value, RedisError> {
+    // let mut conn = get_conn(&RESTYPE.get_host());
     let by_me_si: Value = redis::cmd("vcard")
-        .arg(format!("{}", si.uid))
+        .arg(format!("{}", uid))
         .arg("field")
         .arg("object_type")
         .arg("where")
@@ -392,9 +377,8 @@ fn aggregation_vdel_si() -> Result<(), RedisError> {
         .arg("group")
         .arg("by")
         .arg("object_type")
-        .query(&mut conn)?;
+        .query(conn)?;
 
     println!("si: {:?}", by_me_si);
-
-    Ok(())
+    Ok(by_me_si)
 }
