@@ -188,7 +188,7 @@ where
 
                 if vcmd.route.expect("aggregation").is_aggregation() {
                     // 目前非retrive请求，默认不开启聚合请求，避免sdk无操作
-                    if !self.check_aggregation_request(req, true) {
+                    if !self.check_aggregation_request(req.operation(), vcmd.cmd, true) {
                         log::info!("+++ found unsupported req:{}", req);
                         return Err(protocol::Error::ProtocolNotSupported);
                     }
@@ -345,11 +345,22 @@ where
 
     /// check是否支持该aggregation请求，目前默认只支持retrieve类聚合请求
     #[inline]
-    fn check_aggregation_request(&self, req: &Req, aggregation_route: bool) -> bool {
-        if req.operation().is_retrival() {
+    fn check_aggregation_request(
+        &self,
+        operation: Operation,
+        cmd: CommandType,
+        aggregation_route: bool,
+    ) -> bool {
+        if operation.is_retrival() {
             // retrival 请求总是支持
             true
         } else if aggregation_route && self.strategist.aggregation() {
+            // aggregation策略下，vupdate 目前不支持，因为si中计数不清楚如何设置
+            match cmd {
+                CommandType::VUpdate => return false,
+                _ => {}
+            };
+
             // 对非retrieve类的聚合请求，在aggregation策略的topo中，设置环境变量aggregation_store_enable为true，才支持访问；
             // 目前线上业务都不打开，故线上应该没有此类访问；待有需求再打开
             log::info!(

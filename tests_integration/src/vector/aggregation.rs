@@ -1,198 +1,146 @@
-use std::{thread::sleep, time::Duration};
+use std::{sync::atomic::AtomicI64, thread::sleep, time::Duration};
 
-use redis::{Connection, RedisError, Value};
+use redis::{RedisError, Value};
 
 use super::byme::*;
 
-use crate::{ci::env::*, redis_helper::*, vector::RESTYPE};
+use crate::{
+    ci::env::*,
+    redis_helper::*,
+    vector::{assist::*, RESTYPE},
+};
 
-#[test]
-fn aggregation_vrange() {
-    let mut conn = get_conn(&RESTYPE.get_host());
-    let like_by_me = LikeByMe {
-        uid: 7916804453,
-        like_id: 5078096628678703,
-        object_id: 5078096628678703,
-        object_type: 1,
-    };
+const YEAR_MONTH: &str = "2410";
+static LIKE_ID: AtomicI64 = AtomicI64::new(5078096628678703);
 
-    // vrange 获取最新的1条
-    let rsp: Result<Value, RedisError> = redis::cmd("VRANGE")
-        .arg(format!("{}", like_by_me.uid))
-        .arg("field")
-        .arg("like_id,object_id,object_type")
-        .arg("where")
-        .arg("object_type")
-        .arg("in")
-        .arg("0,1,100")
-        .arg("order")
-        .arg("desc")
-        .arg("like_id")
-        .arg("limit")
-        .arg("0")
-        .arg("10")
-        .query(&mut conn);
-
-    println!("++ rsp:{:?}", rsp);
+// 构建一个新的like id，避免请求重复
+fn next_like_id() -> i64 {
+    // 每次本地测试，可以调整，ci不用
+    let offset = 100;
+    let id = LIKE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    offset + id
 }
 
 #[test]
-fn aggregation_vcard(uid: i64, conn: &mut Connection) -> Result<Value, RedisError> {
+fn aggregation_vrange() -> Result<(), RedisError> {
     let mut conn = get_conn(&RESTYPE.get_host());
     let like_by_me = LikeByMe {
         uid: 7916804453,
-        like_id: 5078096628678703,
+        like_id: next_like_id(),
         object_id: 5078096628678703,
         object_type: 1,
     };
 
-    let by_me_si = aggregation_vcard_local(&mut conn, &like_by_me);
+    // vrange 获取最新的10条
+    let rsp = aglike_cmd_vadd(&mut conn, YEAR_MONTH, &like_by_me)?;
+    assert_eq!(rsp, 2);
+    let rsp = aglike_cmd_vrange(&mut conn, &like_by_me, 10);
+    assert!(rsp.is_ok());
 
+    Ok(())
+}
+
+#[test]
+fn aggregation_vrange_timeline() -> Result<(), RedisError> {
+    let mut conn = get_conn(&RESTYPE.get_host());
+    let like_by_me = LikeByMe {
+        uid: 79168044531,
+        like_id: next_like_id(),
+        object_id: 5078096628678703,
+        object_type: 1,
+    };
+
+    let rsp = aglike_cmd_vadd(&mut conn, YEAR_MONTH, &like_by_me)?;
+    assert_eq!(rsp, 2);
+
+    // vrange 获取最新的10条
+    let rsp = aglike_cmd_vrange_timeline(&mut conn, YEAR_MONTH, &like_by_me, 10)?;
+    println!("++ rsp:{:?}", rsp);
+    Ok(())
+}
+
+#[test]
+fn aggregation_vrange_si() -> Result<(), RedisError> {
+    let mut conn = get_conn(&RESTYPE.get_host());
+    let like_by_me = LikeByMe {
+        uid: 1761220674,
+        like_id: next_like_id(),
+        object_id: 5078096628678703,
+        object_type: 1,
+    };
+
+    let rsp = aglike_cmd_vadd(&mut conn, YEAR_MONTH, &like_by_me)?;
+    assert_eq!(rsp, 2);
+
+    // 获取最新若干条si记录
+    let rsp = aglike_cmd_vrange_si(&mut conn, &like_by_me);
+    println!("vrange.si rsp:{:?}", rsp);
+    Ok(())
+}
+
+#[test]
+fn aggregation_vcard() -> Result<(), RedisError> {
+    let mut conn = get_conn(&RESTYPE.get_host());
+    let like_by_me = LikeByMe {
+        uid: 7916804453,
+        like_id: next_like_id(),
+        object_id: 5078096628678703,
+        object_type: 1,
+    };
+
+    let rsp = aglike_cmd_vadd(&mut conn, YEAR_MONTH, &like_by_me)?;
+    assert_eq!(rsp, 2);
+
+    let by_me_si = aglike_cmd_vcard(&mut conn, like_by_me.uid);
     println!("si: {:?}", by_me_si);
-    Ok(by_me_si)
+    Ok(())
 }
 
-
 #[test]
-fn aggregation_vdel_like() {
+fn aggregation_vget() -> Result<(), RedisError> {
     let mut conn = get_conn(&RESTYPE.get_host());
     let like_by_me = LikeByMe {
         uid: 791680445,
-        like_id: 5078096628678703,
+        like_id: next_like_id(),
         object_id: 5078096628678703,
         object_type: 1,
     };
 
     // vadd 加一个id较大的like_by_me，同时更新si、timeline
-    let rsp: Result<u32, redis::RedisError> = redis::cmd("vadd")
-        .arg(format!("{},2409", like_by_me.uid))
-        .arg("object_type")
-        .arg(like_by_me.object_type)
-        .arg("like_id")
-        .arg(like_by_me.like_id)
-        .arg("object_id")
-        .arg(like_by_me.object_id)
-        .query(&mut conn);
+    let rsp = aglike_cmd_vadd(&mut conn, YEAR_MONTH, &like_by_me)?;
+    assert_eq!(rsp, 2);
 
-    println!("+++ vadd rsp:{:?}", rsp);
-    let rsp = rsp.unwrap();
-    assert!(rsp == (1 + 1) || rsp == (2 + 1));
     sleep(Duration::from_secs(2));
 
-    // 删除新插入的记录
-    let rsp: Result<u32, redis::RedisError> = redis::cmd("vdel")
-        .arg(format!("{},2409", like_by_me.uid))
-        .arg("where")
-        .arg("object_id")
-        .arg("=")
-        .arg(like_by_me.object_id)
-        .arg("object_type")
-        .arg("=")
-        .arg(like_by_me.object_type)
-        .query(&mut conn);
+    // vget 获取某个月份最新的1条
+    let rsp = aglike_cmd_vget(&mut conn, &like_by_me)?;
 
+    println!("++ vget rsp:{:?}", rsp);
+
+    // 删除新插入的记录
+    let rsp: Result<u32, redis::RedisError> = aglike_cmd_vdel(&mut conn, YEAR_MONTH, &like_by_me);
     assert_eq!(Ok(2), rsp);
+    Ok(())
 }
 
 #[test]
-fn aggregation_vget() {
+fn aggregation_vadd() -> Result<(), RedisError> {
     let mut conn = get_conn(&RESTYPE.get_host());
     let like_by_me = LikeByMe {
         uid: 791680445,
-        like_id: 5078096628678703,
+        like_id: next_like_id(),
         object_id: 5078096628678703,
         object_type: 1,
     };
 
     // vadd 加一个id较大的like_by_me，同时更新si、timeline
-    let rsp: Result<u32, redis::RedisError> = redis::cmd("vadd")
-        .arg(format!("{},2409", like_by_me.uid))
-        .arg("object_type")
-        .arg(like_by_me.object_type)
-        .arg("like_id")
-        .arg(like_by_me.like_id)
-        .arg("object_id")
-        .arg(like_by_me.object_id)
-        .query(&mut conn);
-
-    println!("+++ vadd rsp:{:?}", rsp);
-    let rsp = rsp.unwrap();
-    assert!(rsp == (1 + 1) || rsp == (2 + 1));
-    sleep(Duration::from_secs(2));
-
-    // vrange 获取最新的1条
-    let rsp: Result<Value, RedisError> = redis::cmd("vget")
-        .arg(format!("{},2409", like_by_me.uid))
-        .arg("field")
-        .arg("object_type,like_id,object_id")
-        .arg("where")
-        .arg("like_id")
-        .arg("=")
-        .arg(like_by_me.like_id)
-        .arg("object_type")
-        .arg("=")
-        .arg(like_by_me.object_type)
-        .arg("object_id")
-        .arg("=")
-        .arg(like_by_me.object_id)
-        .query(&mut conn);
-
-    println!("++ rsp:{:?}", rsp);
-
-    // 删除新插入的记录
-    let rsp: Result<u32, redis::RedisError> = redis::cmd("vdel")
-        .arg(format!("{},2409", like_by_me.uid))
-        .arg("where")
-        .arg("object_id")
-        .arg("=")
-        .arg(like_by_me.object_id)
-        .arg("object_type")
-        .arg("=")
-        .arg(like_by_me.object_type)
-        .query(&mut conn);
-
-    assert_eq!(Ok(2), rsp);
-}
-
-#[test]
-fn aggregation_vadd_vrange_vdel() {
-    let mut conn = get_conn(&RESTYPE.get_host());
-    let like_by_me = LikeByMe {
-        uid: 791680445,
-        like_id: 5078096628678703,
-        object_id: 5078096628678703,
-        object_type: 1,
-    };
-
-    // vadd 加一个id较大的like_by_me，同时更新si、timeline
-    let rsp: Result<u32, redis::RedisError> = redis::cmd("vadd")
-        .arg(format!("{},2409", like_by_me.uid))
-        .arg("object_type")
-        .arg(like_by_me.object_type)
-        .arg("like_id")
-        .arg(like_by_me.like_id)
-        .arg("object_id")
-        .arg(like_by_me.object_id)
-        .query(&mut conn);
-
-    println!("+++ rsp:{:?}", rsp);
-    let rsp = rsp.unwrap();
+    let rsp = aglike_cmd_vadd(&mut conn, YEAR_MONTH, &like_by_me)?;
+    println!("+++  vadd rsp:{:?}", rsp);
     assert!(rsp == (1 + 1) || rsp == (2 + 1));
 
     // vrange 获取最新的1条
-    let rsp = redis::cmd("VRANGE")
-        .arg(format!("{}", like_by_me.uid))
-        .arg("field")
-        .arg("uid,object_type,like_id,object_id")
-        .arg("where")
-        .arg("order")
-        .arg("desc")
-        .arg("like_id")
-        .arg("limit")
-        .arg("0")
-        .arg("1")
-        .query(&mut conn);
-    println!("++ rsp:{:?}", rsp);
+    let like_via_vget = aglike_cmd_vget(&mut conn, &like_by_me);
+    println!("++ rsp:{:?}", like_via_vget);
 
     assert_eq!(
         Ok(Value::Bulk(vec![
@@ -209,80 +157,29 @@ fn aggregation_vadd_vrange_vdel() {
                 Value::Int(like_by_me.object_id),
             ]),
         ])),
-        rsp
+        like_via_vget
     );
 
     // 删除新插入的记录
-    let rsp: Result<u32, redis::RedisError> = redis::cmd("vdel")
-        .arg(format!("{},2409", like_by_me.uid))
-        .arg("where")
-        .arg("object_id")
-        .arg("=")
-        .arg(like_by_me.object_id)
-        .arg("object_type")
-        .arg("=")
-        .arg(like_by_me.object_type)
-        .query(&mut conn);
-
+    let rsp = aglike_cmd_vdel(&mut conn, YEAR_MONTH, &like_by_me);
     assert_eq!(Ok(2), rsp);
+    Ok(())
 }
 
 #[test]
-fn aggregation_vrange_timeline() {
+fn aggregation_vadd_timeline() -> Result<(), RedisError> {
     let mut conn = get_conn(&RESTYPE.get_host());
     let like_by_me = LikeByMe {
-        uid: 79168044531,
-        like_id: 5078096628678703,
+        uid: 791680445,
+        like_id: next_like_id(),
         object_id: 5078096628678703,
         object_type: 1,
     };
 
-    // vrange 获取最新的1条
-    let rsp: Result<Value, RedisError> = redis::cmd("VRANGE.timeline")
-        .arg(format!("{},2409", like_by_me.uid))
-        .arg("field")
-        .arg("like_id,object_id,object_type")
-        .arg("where")
-        .arg("object_type")
-        .arg("in")
-        .arg("0,1,100")
-        .arg("order")
-        .arg("desc")
-        .arg("like_id")
-        .arg("limit")
-        .arg("0")
-        .arg("10")
-        .query(&mut conn);
+    let rsp = aglike_cmd_vadd_timeline(&mut conn, YEAR_MONTH, &like_by_me);
+    println!("vadd timeline:{:?}", rsp);
 
-    println!("++ rsp:{:?}", rsp);
-}
-
-#[test]
-fn aggregation_vrange_si() {
-    let mut conn = get_conn(&RESTYPE.get_host());
-    let like_by_me = LikeByMe {
-        uid: 1761220674,
-        like_id: 5078096628678703,
-        object_id: 5078096628678703,
-        object_type: 1,
-    };
-    // 获取最新若干条si记录
-    let rsp: Result<Value, RedisError> = redis::cmd("VRANGE.si")
-        .arg(format!("{}", like_by_me.uid))
-        .arg("field")
-        .arg("uid,start_date,sum(count)")
-        .arg("where")
-        .arg("object_type")
-        .arg("in")
-        .arg("0,1,100")
-        .arg("group")
-        .arg("by")
-        .arg("uid,start_date")
-        .arg("order")
-        .arg("desc")
-        .arg("start_date")
-        .query(&mut conn);
-    println!("vrange.si rsp:{:?}", rsp);
+    Ok(())
 }
 
 #[test]
@@ -296,23 +193,54 @@ fn aggregation_vadd_si() -> Result<(), RedisError> {
     };
 
     // vadd 加一个id较大的like_by_me，同时更新si、timeline
-    let rsp: Result<u32, redis::RedisError> = redis::cmd("vadd.si")
-        .arg(format!("{},2410", si.uid))
-        .arg("object_type")
-        .arg(si.object_type)
-        // .arg("start_date")
-        // .arg(si.start_date)
-        .arg("count")
-        .arg(si.count)
-        .query(&mut conn);
-
+    let rsp = aglike_cmd_vadd_si(&mut conn, YEAR_MONTH, &si)?;
     println!("+++ add.si rsp:{:?}", rsp);
-    let rsp = rsp.unwrap();
     assert!(rsp == 1 || rsp == 2);
 
-    let by_me_si = aggregation_vcard_local(si.uid, &mut conn)?;
+    let by_me_si = aglike_cmd_vcard(&mut conn, si.uid)?;
     print!("after vadd si, vcard now: {:?}", by_me_si);
 
+    Ok(())
+}
+
+#[test]
+fn aggregation_vupdate() -> Result<(), RedisError> {
+    let mut conn = get_conn(&RESTYPE.get_host());
+    let like_by_me = LikeByMe {
+        uid: 791680445,
+        like_id: next_like_id(),
+        object_id: 5078096628678703,
+        object_type: 1,
+    };
+
+    let rsp = aglike_cmd_vupdate(&mut conn, YEAR_MONTH, &like_by_me);
+    assert!(rsp.is_err());
+    println!("vupdate rsp should be err: {:?}", rsp);
+    Ok(())
+}
+
+#[test]
+fn aggregation_vupdate_timeline() -> Result<(), RedisError> {
+    let mut conn = get_conn(&RESTYPE.get_host());
+    let like_id = next_like_id();
+    let like_by_me = LikeByMe {
+        uid: 791680445,
+        like_id: like_id,
+        object_id: 5078096628678703,
+        object_type: 1,
+    };
+    let like_by_me2 = LikeByMe {
+        uid: 791680445,
+        like_id: like_id,
+        object_id: 5078096628678703,
+        object_type: 2,
+    };
+
+    let rsp = aglike_cmd_vadd_timeline(&mut conn, YEAR_MONTH, &like_by_me)?;
+    assert!(rsp == 1 || rsp == 2);
+    let rsp = aglike_cmd_vupdate(&mut conn, YEAR_MONTH, &like_by_me2)?;
+    assert_eq!(rsp, 2);
+    println!("vupdate timeline rsp: {}", rsp);
     Ok(())
 }
 
@@ -327,29 +255,57 @@ fn aggregation_vupdate_si() -> Result<(), RedisError> {
     };
 
     // vadd 加一个id较大的like_by_me，同时更新si、timeline
-    let rsp: Result<u32, redis::RedisError> = redis::cmd("vupdate.si")
-        .arg(format!("{},2410", si.uid))
-        // .arg("object_type")
-        // .arg(si.object_type)
-        // .arg("start_date")
-        // .arg(si.start_date)
-        .arg("count")
-        .arg(si.count)
-        .arg("where")
-        .arg("object_type")
-        .arg("=")
-        .arg(si.object_type)
-        .query(&mut conn);
+    let rsp = aglike_cmd_vadd_si(&mut conn, YEAR_MONTH, &si)?;
+    assert!(rsp == 2 || rsp == 1);
+
+    let rsp = aglike_cmd_vupdate_si(&mut conn, YEAR_MONTH, &si)?;
 
     println!("+++ vupdate.si/{} rsp:{:?}", si.count, rsp);
-    let rsp = rsp.unwrap();
     assert!(rsp == 1 || rsp == 2);
 
-    let by_me_si = aggregation_vcard_local(si.uid, &mut conn)?;
+    let by_me_si = aglike_cmd_vcard(&mut conn, si.uid)?;
     print!("after vupdate si, vcard now: {:?}", by_me_si);
 
     println!("si: {:?}", by_me_si);
 
+    Ok(())
+}
+
+#[test]
+fn aggregation_vdel() -> Result<(), RedisError> {
+    let mut conn = get_conn(&RESTYPE.get_host());
+    let like_by_me = LikeByMe {
+        uid: 791680445,
+        like_id: next_like_id(),
+        object_id: 5078096628678703,
+        object_type: 1,
+    };
+
+    let vadd_rsp = aglike_cmd_vadd(&mut conn, YEAR_MONTH, &like_by_me)?;
+    println!("+++ vadd rsp:{:?}", vadd_rsp);
+    assert!(vadd_rsp == (1 + 1) || vadd_rsp == (2 + 1));
+
+    // 删除新插入的记录
+    let rsp = aglike_cmd_vdel(&mut conn, YEAR_MONTH, &like_by_me);
+    assert_eq!(Ok(2), rsp);
+    Ok(())
+}
+
+#[test]
+fn aggregation_vdel_timeline() -> Result<(), RedisError> {
+    let mut conn = get_conn(&RESTYPE.get_host());
+    let like_by_me = LikeByMe {
+        uid: 791680445,
+        like_id: next_like_id(),
+        object_id: 5078096628678703,
+        object_type: 1,
+    };
+
+    let vadd_rsp = aglike_cmd_vadd_timeline(&mut conn, YEAR_MONTH, &like_by_me)?;
+    assert_eq!(vadd_rsp, 1);
+
+    let vdel_rsp = aglike_cmd_vdel_timeline(&mut conn, YEAR_MONTH, &like_by_me)?;
+    assert_eq!(vdel_rsp, 1);
     Ok(())
 }
 
@@ -363,39 +319,16 @@ fn aggregation_vdel_si() -> Result<(), RedisError> {
         count: 2,
     };
 
-    // vadd 加一个id较大的like_by_me，同时更新si、timeline
-    let rsp: Result<u32, redis::RedisError> = redis::cmd("vdel.si")
-        .arg(format!("{},2410", si.uid))
-        .arg("where")
-        .arg("object_type")
-        .arg("=")
-        .arg(si.object_type)
-        .query(&mut conn);
+    let rsp = aglike_cmd_vadd_si(&mut conn, YEAR_MONTH, &si)?;
+    assert!(rsp == 2 || rsp == 3);
 
-    println!("+++ vupdate.si/{} rsp:{:?}", si.count, rsp);
+    // vadd 加一个id较大的like_by_me，同时更新si、timeline
+    let rsp: Result<u32, redis::RedisError> = aglike_cmd_vdel_si(&mut conn, YEAR_MONTH, &si);
+    println!("+++ vdel.si/{} rsp:{:?}", si.count, rsp);
     let rsp = rsp.unwrap();
     assert!(rsp == 1 || rsp == 2);
 
-    let value = aggregation_vcard_local(si.uid, &mut conn)?;
+    let value = aglike_cmd_vcard(&mut conn, si.uid)?;
     print!("after vdel si, vcard now: {:?}", value);
     Ok(())
-}
-
-fn aggregation_vcard_local(uid: i64, conn: &mut Connection) -> Result<Value, RedisError> {
-    // let mut conn = get_conn(&RESTYPE.get_host());
-    let by_me_si: Value = redis::cmd("vcard")
-        .arg(format!("{}", uid))
-        .arg("field")
-        .arg("object_type")
-        .arg("where")
-        .arg("object_type")
-        .arg("in")
-        .arg("1,2,3,100")
-        .arg("group")
-        .arg("by")
-        .arg("object_type")
-        .query(conn)?;
-
-    println!("si: {:?}", by_me_si);
-    Ok(by_me_si)
 }

@@ -6,6 +6,7 @@ use function_name::named;
 use redis::Value;
 mod aggregation;
 mod byme;
+mod assist;
 
 pub(crate) const RESTYPE: &str = "vector";
 pub(crate) const CMD_VGET: &str = "vget";
