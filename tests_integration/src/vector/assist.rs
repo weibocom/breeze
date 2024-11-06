@@ -123,8 +123,6 @@ pub(super) fn aglike_cmd_vadd_timeline(
     // vadd 加一个id较大的like_by_me，同时更新si、timeline
     let rsp: Result<u32, redis::RedisError> = redis::cmd("vadd.timeline")
         .arg(format!("{},{}", like_by_me.uid, year_month))
-        .arg("uid")
-        .arg(like_by_me.uid)
         .arg("object_type")
         .arg(like_by_me.object_type)
         .arg("like_id")
@@ -177,25 +175,29 @@ pub(super) fn aglike_cmd_vupdate(
     rsp
 }
 
+/**
+ * 修改object_type
+ */
 pub(super) fn aglike_cmd_vupdate_timeline(
     conn: &mut Connection,
     year_month: &str,
-    like_by_me: &LikeByMe,
+    like_by_me_origin: &LikeByMe,
+    like_by_me_new: &LikeByMe,
 ) -> Result<u32, redis::RedisError> {
     let rsp: Result<u32, redis::RedisError> = redis::cmd("vupdate.timeline")
-        .arg(format!("{},{}", like_by_me.uid, year_month))
-        .arg("object_id")
-        .arg(like_by_me.object_id)
+        .arg(format!("{},{}", like_by_me_origin.uid, year_month))
+        .arg("object_type")
+        .arg(like_by_me_new.object_type)
         .arg("where")
         .arg("object_type")
         .arg("=")
-        .arg(like_by_me.object_type)
+        .arg(like_by_me_origin.object_type)
         .arg("like_id")
         .arg("=")
-        .arg(like_by_me.like_id)
+        .arg(like_by_me_origin.like_id)
         .arg("object_id")
         .arg("=")
-        .arg(like_by_me.object_id)
+        .arg(like_by_me_origin.object_id)
         .query(conn);
     println!("cmd vupdate.timeline rsp: {:?}", rsp);
     rsp
@@ -227,6 +229,9 @@ pub(super) fn aglike_cmd_vdel(
     let rsp: Result<u32, RedisError> = redis::cmd("vdel")
         .arg(format!("{},{}", like_by_me.uid, year_month))
         .arg("where")
+        .arg("like_id")
+        .arg("=")
+        .arg(like_by_me.like_id)
         .arg("object_id")
         .arg("=")
         .arg(like_by_me.object_id)
@@ -278,12 +283,13 @@ pub(super) fn aglike_cmd_vdel_si(
 
 pub(super) fn aglike_cmd_vget(
     conn: &mut Connection,
+    year_month: &str,
     like_by_me: &LikeByMe,
 ) -> Result<Value, RedisError> {
     let rsp: Result<Value, RedisError> = redis::cmd("vget")
-        .arg(format!("{},2409", like_by_me.uid))
+        .arg(format!("{},{}", like_by_me.uid, year_month))
         .arg("field")
-        .arg("object_type,like_id,object_id")
+        .arg("uid,object_type,like_id,object_id")
         .arg("where")
         .arg("like_id")
         .arg("=")
