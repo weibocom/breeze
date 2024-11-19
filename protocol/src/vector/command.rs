@@ -12,6 +12,7 @@ pub struct CommandProperties {
     pub(crate) op: Operation,
     pub(crate) supported: bool,
     pub(crate) has_key: bool,                  // 是否有key
+    pub(crate) multi: bool,                    // 该命令是否可能会包含多个key
     pub(crate) can_hold_field: bool,           //能否持有field
     pub(crate) can_hold_where_condition: bool, // 能否持有where condition
     // 指令在不路由或者无server响应时的响应位置，
@@ -148,11 +149,11 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("vadd").arity(-2).op(Store).cmd_type(CommandType::VAdd).padding(pt[3]).has_key().can_hold_field(),
         // Cmd::new("vreplace").arity(-2).op(Store).cmd_type(CommandType::VReplace).padding(pt[3]).has_key().can_hold_field(),
         Cmd::new("vupdate").arity(-2).op(Store).cmd_type(CommandType::VUpdate).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
-        Cmd::new("vdel").arity(-2).op(Store).cmd_type(CommandType::VDel).padding(pt[3]).has_key().can_hold_where_condition(),
+        Cmd::new("vdel").arity(-2).op(Store).cmd_type(CommandType::VDel).padding(pt[3]).has_key().multi().can_hold_where_condition(),
         Cmd::new("vcard").route(Route::Si).arity(-2).op(Get).cmd_type(CommandType::VCard).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
 
         // vget 只是从timeline获取单条记录，所以route需要设置为timeline/main
-        Cmd::new("vget").route(Route::TimelineOrMain).arity(-2).op(Get).cmd_type(CommandType::VGet).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
+        Cmd::new("vget").route(Route::TimelineOrMain).arity(-2).op(Get).cmd_type(CommandType::VGet).padding(pt[3]).has_key().multi().can_hold_field().can_hold_where_condition(),
 
         // 对于timeline、si后缀指令，只是中间状态，为了处理方便，不额外增加字段，仍然作为独立指令来处理
         Cmd::new("vrange.timeline").route(Route::TimelineOrMain).arity(-2).op(Get).cmd_type(CommandType::VRangeTimeline).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
@@ -202,6 +203,10 @@ impl CommandProperties {
     }
     pub(crate) fn has_key(mut self) -> Self {
         self.has_key = true;
+        self
+    }
+    pub(crate) fn multi(mut self) -> Self {
+        self.multi = true;
         self
     }
     pub(crate) fn can_hold_field(mut self) -> Self {

@@ -1,5 +1,5 @@
 use discovery::{Inited, TopologyWrite};
-use protocol::{Protocol, Request, ResOption, Resource};
+use protocol::{HashedCommand, Protocol, Request, ResOption, Resource};
 use sharding::hash::{Hash, HashKey};
 
 use crate::Timeout;
@@ -37,6 +37,9 @@ procs::topology_dispatcher! {
     pub trait Topology : Endpoint + Hash{
         fn exp_sec(&self) -> u32 {86400}
         fn has_attach(&self) -> bool {false}
+        fn req_can_split(&self, _cmd: &HashedCommand) -> bool { false }
+        // 如果不能拆分成多个请求，则返回None
+        fn split_req(&self, _cmd: &HashedCommand) -> Option<Vec<HashedCommand>> { None }
     } => where P:Protocol, E:Endpoint<Item = R>, R:Request, Topologies<E, P>: Endpoint
 
     trait Inited {

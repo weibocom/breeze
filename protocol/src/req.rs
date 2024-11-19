@@ -76,4 +76,6 @@ pub trait Request:
     // fn set_fitst_try(&mut self);
     fn set_next_round(&mut self, next_round: bool);
     fn get_next_round(&mut self) -> bool;
+    // 是否可以拆分成多个请求
+    fn can_split(&mut self) -> bool;
 }

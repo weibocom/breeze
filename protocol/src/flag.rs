@@ -6,6 +6,7 @@ pub struct Flag {
     op: Operation,
     sentonly: bool,
     noforward: bool,
+    can_split: bool,
     v: FlagExt,
 }
 
@@ -76,6 +77,14 @@ impl Flag {
     pub fn reset_flag(&mut self, op_code: OpCode, op: Operation) {
         self.op_code = op_code;
         self.op = op;
+    }
+    #[inline]
+    pub fn can_split(&self) -> bool {
+        self.can_split
+    }
+    #[inline]
+    pub fn set_can_split(&mut self) {
+        self.can_split = true;
     }
 }
 

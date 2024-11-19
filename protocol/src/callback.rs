@@ -42,7 +42,7 @@ pub struct CallbackContext {
     first: bool,                 // 当前请求是否是所有子请求的第一个
     last: bool,                  // 当前请求是否是所有子请求的最后一个
     tries: AtomicU8,
-    request: HashedCommand,
+    pub(crate) request: HashedCommand,
     response: MaybeUninit<Command>,
     start: Instant, // 请求的开始时间
     waker: *const Arc<AtomicWaker>,

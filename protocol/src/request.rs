@@ -82,6 +82,9 @@ impl crate::Request for Request {
     fn get_next_round(&mut self) -> bool {
         self.ctx().get_next_round()
     }
+    fn can_split(&mut self) -> bool {
+        self.ctx().request.flag().can_split()
+    }
 }
 impl Request {
     #[inline]
