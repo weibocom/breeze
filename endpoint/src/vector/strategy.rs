@@ -63,6 +63,18 @@ impl Strategist {
                     ns.si_backends.len() as u32,
                 ))
             }
+            "timekv" => {
+                // key里包含时间信息；stragy配置与VectorTime兼容
+                Self::VectorTime(VectorTime::new_with_db(
+                    ns.basic.db_name.clone(),
+                    ns.basic.table_name.clone(),
+                    ns.basic.db_count,
+                    //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
+                    ns.backends.iter().next().unwrap().1.len() as u32,
+                    ns.basic.table_postfix.as_str().try_into().ok()?,
+                    ns.basic.keys.clone(),
+                ))
+            }
             _ => {
                 if ns.basic.keys.len() < 2 {
                     log::warn!("len keys < 2");

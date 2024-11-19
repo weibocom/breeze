@@ -260,6 +260,11 @@ impl Vector {
             let cfg = packet.parse_cmd_properties()?;
             let mut flag = cfg.flag();
             let key = packet.parse_cmd(cfg, &mut flag)?;
+            if cfg.multi {
+                // 这里可能是多个key，需要拆分、分组，属于同一个端口的，组成in即：select id in(key1,...,keyN)
+                // 根据keys格式，分割key，并且分组，分组后的key，按照hash分配到不同的后端；根据策略，prehash
+                flag.set_can_split();
+            }
 
             // 构建cmd，准备后续处理
             let cmd = packet.take();

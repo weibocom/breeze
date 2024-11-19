@@ -5,27 +5,29 @@ use chrono::{Datelike, NaiveDate};
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
-use ds::MemGuard;
+use ds::{MemGuard, RingSlice};
 use protocol::kv::{ContextStatus, MysqlBuilder};
 use protocol::vector::attachment::{BackendType, VAttach, VectorAttach};
+use protocol::vector::flager::KvFlager;
 use protocol::vector::redis::parse_vector_detail;
-use protocol::vector::{command, CommandType, VectorCmd};
+use protocol::vector::{command, CommandType, Strategy, VectorCmd};
 use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
-use protocol::{Operation, Protocol};
+use protocol::{HashedCommand, Operation, Protocol};
 use sharding::hash::{Hash, HashKey};
-
-use crate::dns::DnsConfig;
-use crate::Timeout;
-use crate::{Endpoint, Topology};
-use protocol::vector::mysql::{SiSqlBuilder, SqlBuilder};
 
 use super::config::VectorNamespace;
 use super::strategy::Strategist;
+use crate::dns::DnsConfig;
 use crate::kv::topo::Shards;
 use crate::kv::KVCtx;
 use crate::shards::Shard;
+use crate::Timeout;
+use crate::{Endpoint, Topology};
+use protocol::redis::Packet;
+use protocol::vector::mysql::{SiSqlBuilder, SqlBuilder};
+use protocol::vector::redis::KVECTOR_SEPARATOR;
 #[derive(Clone)]
 pub struct VectorService<E, P> {
     shards: Shards<E>,
@@ -67,6 +69,85 @@ where
 {
     fn has_attach(&self) -> bool {
         self.strategist.aggregation()
+    }
+    fn req_can_split(&self, cmd: &HashedCommand) -> bool {
+        if !cmd.flag().can_split() {
+            return false;
+        }
+
+        // cmd里key数量比策略里配置的key数量多，就可以拆分
+        let mut oft = cmd.flag().key_pos() as usize;
+        let data = Packet::from(***cmd);
+        match data.bulk_string(&mut oft) {
+            Ok(key_data) => {
+                let stragy_key_count = self.strategist.keys().len();
+                oft = 0;
+                let mut key_count = 0;
+                loop {
+                    if oft >= key_data.len() {
+                        break;
+                    }
+                    // 从keys中split出','分割的key
+                    let idx = key_data
+                        .find(oft, KVECTOR_SEPARATOR)
+                        .unwrap_or(key_data.len());
+                    oft = idx + 1;
+                    key_count += 1;
+                    (key_count > stragy_key_count).then(|| return true);
+                }
+                key_count > stragy_key_count
+            }
+            _ => false,
+        }
+    }
+
+    // 如果不能拆分成多个请求，则返回None
+    fn split_req(&self, cmd: &HashedCommand) -> Option<Vec<HashedCommand>> {
+        // cmd里key数量比策略里配置的key数量多，就可以拆分
+        let mut oft = cmd.flag().key_pos() as usize;
+        let data = Packet::from(***cmd);
+        let key_data_packet = data.bulk_string(&mut oft);
+        if key_data_packet.is_err() {
+            return None;
+        }
+        let key_data = data.bulk_string(&mut oft).unwrap();
+        let mut keys: Vec<RingSlice> = Vec::with_capacity(10);
+        oft = 0;
+        loop {
+            if oft >= key_data.len() {
+                break;
+            }
+            // 从keys中split出','分割的key
+            let idx = key_data
+                .find(oft, KVECTOR_SEPARATOR)
+                .unwrap_or(key_data.len());
+            keys.push(key_data.sub_slice(oft, idx - oft));
+            oft = idx + 1;
+        }
+
+        let stragy_key_count = self.strategist.keys().len();
+        if keys.len() <= stragy_key_count {
+            return None;
+        }
+
+        // key有相同shard_idx、year、table_postfix才表明key属于同一张table， 这样的key才能合成一个多key请求
+        // let mut key_tuples = Vec::new();
+        // for i in (0..keys.len()).step_by(stragy_key_count) {
+        //     let shard_idx = self.strategist.shard_index(&keys[i]);
+        //     let year = self.strategist.year(&keys[i]);
+        //     let table_postfix = self.strategist.table_postfix(&keys[i]);
+
+        //     key_tuples.push((shard_idx, year, table_postfix, i));
+        // }
+
+        // // Further processing to split the request based on key_tuples
+
+        // let mut reqs = Vec::with_capacity(key_count / stragy_key_count);
+        // let mut req = HashedCommand::new(cmd.op_code(), cmd.flag(), cmd.attach().vcmd.clone());
+        // let mut key_count = 0;
+        // for key in keys {
+        // }
+        None
     }
 }
 

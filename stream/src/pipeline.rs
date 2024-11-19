@@ -224,12 +224,9 @@ struct Visitor<'a, T, P> {
     retry_on_rsp_notok: bool,
     has_attach: bool,
 }
-
-impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> protocol::RequestProcessor
-    for Visitor<'a, T, P>
-{
+impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> Visitor<'a, T, P> {
     #[inline]
-    fn process(&mut self, cmd: HashedCommand, last: bool) {
+    fn process_onecmd(&mut self, cmd: HashedCommand, last: bool) {
         let first = *self.first;
         // 如果当前是最后一个子请求，那下一个请求就是一个全新的请求。
         // 否则下一个请求是子请求。
@@ -264,6 +261,29 @@ impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> protocol::Req
         } else {
             self.top.send(req);
         }
+    }
+}
+
+impl<'a, T: Topology<Item = Request> + TopologyCheck, P: Protocol> protocol::RequestProcessor
+    for Visitor<'a, T, P>
+{
+    #[inline]
+    fn process(&mut self, cmd: HashedCommand, last: bool) {
+        // req能拆分的话，则拆分后依次处理
+        if last && self.top.req_can_split(&cmd) {
+            let splited_cmds = self.top.split_req(&cmd);
+            if let Some(multi_cmds) = splited_cmds {
+                let len = multi_cmds.len();
+                for (i, hcmd) in multi_cmds.into_iter().enumerate() {
+                    let islast = i == (len - 1);
+                    self.process_onecmd(hcmd, islast);
+                }
+                return;
+            }
+        }
+
+        // req不能拆，保持原有处理逻辑
+        self.process_onecmd(cmd, last)
     }
 }
 impl<C, P, T> Drop for CopyBidirectional<C, P, T> {

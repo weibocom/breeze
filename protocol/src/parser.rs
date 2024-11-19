@@ -299,6 +299,10 @@ impl HashedCommand {
             self.cmd = dest_cmd;
         }
     }
+    #[inline]
+    pub fn can_split(&self) -> bool {
+        self.flag.can_split()
+    }
 }
 
 use std::fmt::{self, Debug, Display, Formatter};
