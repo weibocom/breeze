@@ -12,6 +12,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use metrics::{Metric, Path};
 
+const REQ_CAP : usize = 64;
 pub struct Handler<'r, Req, P, S> {
     data: &'r mut Receiver<Req>,
     pending: VecDeque<(Req, Instant)>,
@@ -74,7 +75,7 @@ where
             err,
             host_metric: HostMetric::from(path),
             num: Number::default(),
-            req_buf: Vec::with_capacity(4),
+            req_buf: Vec::with_capacity(REQ_CAP),
             ping_cycle: 0,
             name,
         }
@@ -113,7 +114,7 @@ where
     // 发送request. 读空所有的request，并且发送。直到pending或者error
     #[inline]
     fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        while ready!(self.data.poll_recv_many(cx, &mut self.req_buf, 4)) > 0 {
+        while ready!(self.data.poll_recv_many(cx, &mut self.req_buf, REQ_CAP)) > 0 {
             self.s.cache(self.req_buf.len() > 1);
             let ptr = self.req_buf.as_ptr();
             for i in 0..self.req_buf.len() {
