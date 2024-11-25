@@ -64,7 +64,8 @@ impl<S: AsyncWrite + Unpin + std::fmt::Debug> AsyncWrite for Stream<S> {
         data: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
         // 这个值应该要大于MSS，否则一个请求分多次返回，会触发delay ack。
-        const LARGE_SIZE: usize = 4 * 1024;
+        // 按MTU默认值1500，IP/TCP头各20；8帧数据
+        const LARGE_SIZE: usize = 8 * 1460;
         // 数据量比较大，尝试直接写入。写入之前要把buf flush掉。
         if self.buf.len() + data.len() >= LARGE_SIZE {
             let _ = self.as_mut().poll_flush(cx);
