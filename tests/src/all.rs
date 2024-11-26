@@ -25,6 +25,7 @@ mod dns;
 // mod ip;
 mod context;
 mod kv;
+mod kvector;
 mod mq;
 mod mysql_strategy;
 mod number;
