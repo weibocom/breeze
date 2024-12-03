@@ -81,6 +81,15 @@ impl KVTime {
             }
         }
     }
+    #[inline]
+    pub fn table_postfix(&self) -> Postfix {
+        return  self.table_postfix.clone()
+    }
+    #[inline]
+    pub fn get_date(&self, key: &RingSlice) -> NaiveDate {
+        let uuid = key.uuid();
+        uuid.native_date()
+    }
 }
 impl Strategy for KVTime {
     fn distribution(&self) -> &DBRange {

@@ -3,7 +3,7 @@ use crate::{Endpoint, Endpoints, Topology};
 use discovery::TopologyWrite;
 use protocol::memcache::Binary;
 use protocol::{Protocol, Request, Resource::Memcache};
-use sharding::hash::{Hash, HashKey, Hasher};
+use sharding::hash::{Hash, HashKey, Hasher, HashGrouper};
 
 use super::config::Flag;
 use crate::shards::Shards;
@@ -72,6 +72,13 @@ where
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
         self.hasher.hash(k)
     }
+}
+
+impl<E, P> HashGrouper for CacheService<E, P>
+where
+    E: Endpoint,
+    P: Protocol,
+{
 }
 
 impl<E, Req, P> Topology for CacheService<E, P>

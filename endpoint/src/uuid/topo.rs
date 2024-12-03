@@ -5,7 +5,7 @@ use crate::{
 };
 use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource::Uuid};
-use sharding::hash::{Hash, HashKey};
+use sharding::hash::{Hash, HashKey, HashGrouper};
 
 use super::config::UuidNamespace;
 
@@ -35,6 +35,13 @@ where
     fn hash<K: HashKey>(&self, _k: &K) -> i64 {
         0
     }
+}
+
+impl<E, P> HashGrouper for UuidService<E, P>
+where
+    E: Endpoint,
+    P: Protocol,
+{
 }
 
 impl<E, Req, P> Topology for UuidService<E, P>

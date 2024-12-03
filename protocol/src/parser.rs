@@ -1,6 +1,6 @@
 use enum_dispatch::enum_dispatch;
 
-use sharding::hash::Hash;
+use sharding::hash::{Hash, HashGrouper};
 
 use crate::kv::Kv;
 use crate::memcache::MemcacheBinary;
@@ -77,7 +77,7 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     fn handshake(&self, stream: &mut impl Stream, option: &mut ResOption) -> Result<HandShake> {
         Ok(HandShake::Success)
     }
-    fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
+    fn parse_request<S: Stream, H: Hash+HashGrouper, P: RequestProcessor>(
         &self,
         stream: &mut S,
         alg: &H,

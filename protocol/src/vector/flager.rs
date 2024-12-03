@@ -22,7 +22,10 @@ const CONDITION_POS_SHIFT: u8 = FIELD_POS_SHIFT + FIELD_POS_BITS;
 pub(super) const CONDITION_POS_BITS: u8 = 24;
 const CONDITION_POS_MASK: u64 = (1 << CONDITION_POS_BITS) - 1;
 
-/// bits:40-63 暂时保留
+// [40]: 标识是否是第一个key
+const MKEY_FIRST_SHIFT: u8 = CONDITION_POS_SHIFT + CONDITION_POS_BITS;
+// const MKEY_FIRST_BIT: u8 = 1; // 这个先保留，后续增加字段时需要
+/// bits:41-63 暂时保留
 /// 备注：当前kv最多支持的指令名称长度不超过200，field pair不超过200对，condition数量不超过200段;
 ///       如果field pos、condition pos超过u16，返回u16::max,具体位置需要调用方再次扫描获取;
 
@@ -37,6 +40,8 @@ pub trait KvFlager {
     // fn condition_count(&self) -> u8;
     fn set_condition_pos(&mut self, condition_pos: u32);
     fn condition_pos(&self) -> u32;
+    fn set_mkey_first(&mut self);
+    fn mkey_first(&self) -> bool;
 }
 
 use crate::{Bit, Ext};
@@ -93,5 +98,16 @@ impl<T: Ext> KvFlager for T {
     #[inline]
     fn condition_pos(&self) -> u32 {
         self.mask_get(CONDITION_POS_SHIFT, CONDITION_POS_MASK) as u32
+    }
+    #[inline]
+    fn set_mkey_first(&mut self) {
+        debug_assert!(!self.mkey_first());
+        self.set(MKEY_FIRST_SHIFT);
+        //*self.ext_mut() |= 1 << MKEY_FIRST_SHIFT;
+        debug_assert!(self.mkey_first());
+    }
+    #[inline]
+    fn mkey_first(&self) -> bool {
+        self.get(MKEY_FIRST_SHIFT)
     }
 }

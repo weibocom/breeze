@@ -1,6 +1,6 @@
 use crate::{HashedCommand, OpCode, Operation};
 pub type FlagExt = u64;
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Flag {
     op_code: OpCode,
     op: Operation,

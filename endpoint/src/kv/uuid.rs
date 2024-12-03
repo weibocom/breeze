@@ -1,4 +1,4 @@
-use chrono::{Datelike, TimeZone};
+use chrono::{Datelike, TimeZone, NaiveDate};
 use chrono_tz::Asia::Shanghai;
 // use std::collections::HashMap;
 // use std::sync::atomic::{AtomicI64, Ordering};
@@ -29,6 +29,8 @@ pub trait Uuid {
     fn ymd(&self) -> (u16, u8, u8);
     // 返回year
     fn year(&self) -> u16;
+    // 返回date
+    fn native_date(&self) -> NaiveDate;
 }
 
 impl Uuid for i64 {
@@ -52,6 +54,14 @@ impl Uuid for i64 {
     fn year(&self) -> u16 {
         let (year, _, _) = self.ymd();
         year
+    }
+    #[inline(always)]
+    fn native_date(&self) -> NaiveDate {
+        chrono::Utc
+            .timestamp_opt(self.unix_secs(), 0)
+            .unwrap()
+            .with_timezone(&Shanghai)
+            .date_naive()
     }
 }
 
