@@ -18,7 +18,7 @@ use crate::{
 use attachment::{AttachType, Route};
 use chrono::NaiveDate;
 use ds::RingSlice;
-use sharding::hash::Hash;
+use sharding::hash::{HashGrouper, Hash};
 
 use self::attachment::VectorAttach;
 use self::packet::RedisPack;
@@ -28,12 +28,13 @@ use crate::kv::client::Client;
 use crate::kv::{ContextStatus, HandShakeStatus};
 use crate::HandShake;
 pub use command::CommandType;
+pub use flager::KvFlager;
 
 #[derive(Clone, Default)]
 pub struct Vector;
 
 impl Protocol for Vector {
-    fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
+    fn parse_request<S: Stream, H: Hash+HashGrouper, P: RequestProcessor>(
         &self,
         stream: &mut S,
         alg: &H,
@@ -248,7 +249,7 @@ impl Protocol for Vector {
 
 impl Vector {
     #[inline]
-    fn parse_request_inner<S: Stream, H: Hash, P: RequestProcessor>(
+    fn parse_request_inner<S: Stream, H: Hash+HashGrouper, P: RequestProcessor>(
         &self,
         packet: &mut RequestPacket<S>,
         alg: &H,
@@ -261,10 +262,31 @@ impl Vector {
             let mut flag = cfg.flag();
             let key = packet.parse_cmd(cfg, &mut flag)?;
 
+            if cfg.multi && key.is_some() {
+                // 这里可能是多个key，需要拆分、分组，属于同一个端口的，组成in即：select id in(key1,...,keyN)
+                // 根据keys格式，分割key，并且分组，分组后的key，按照hash分配到不同的后端；根据策略，prehash
+                // (shard_idx, year, yymmdd/yymm)三元组一致的，放一个请求
+                if let Some(sorted_keys) = alg.group(&key.unwrap()) {
+                    let org_cmd = packet.take(); // 原始请求
+                    for i in 0..sorted_keys.len() {
+                        let (sorted_key, h) = &sorted_keys[i];
+                        // 构建cmd，准备后续处理
+                        let req = cfg.build_request(*h, i==0, flag.clone(), sorted_key, &org_cmd);
+                        log::debug!("+++ kvector/{} req:{:?}", cfg.name, req);
+                        let last = i==(sorted_keys.len()-1);
+                        process.process(req, last);
+                    }
+                    return Ok(())
+                }
+            }
+            let main_key = match key {
+                Some(key) => Some(packet.main_key(&key)),
+                None => None,
+            };
             // 构建cmd，准备后续处理
             let cmd = packet.take();
-            let hash = packet.hash(key, alg);
-            log::debug!("+++ kvector/{} key:{:?}/{}", cfg.name, key, hash);
+            let hash = packet.hash(main_key, alg);
+            log::debug!("+++ kvector/{} main_key:{:?}/{}", cfg.name, main_key, hash);
             let cmd = HashedCommand::new(cmd, hash, flag);
             process.process(cmd, true);
         }

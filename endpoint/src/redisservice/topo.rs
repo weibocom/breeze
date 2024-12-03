@@ -6,7 +6,7 @@ use crate::{
 use discovery::TopologyWrite;
 use protocol::{Protocol, RedisFlager, Request, Resource::Redis};
 use sharding::distribution::Distribute;
-use sharding::hash::{Hash, HashKey, Hasher};
+use sharding::hash::{Hash, HashKey, Hasher, HashGrouper};
 
 use super::config::RedisNamespace;
 
@@ -41,6 +41,13 @@ where
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
         self.hasher.hash(k)
     }
+}
+
+impl<E, P> HashGrouper for RedisService<E, P>
+where
+    E: Endpoint,
+    P: Protocol,
+{
 }
 
 impl<E, Req, P> Topology for RedisService<E, P>

@@ -7,7 +7,7 @@ use discovery::{Inited, TopologyWrite};
 use protocol::{Protocol, Request, Resource::Phantom};
 use sharding::{
     distribution::Range,
-    hash::{Crc32, Hash, HashKey},
+    hash::{Crc32, Hash, HashKey, HashGrouper},
 };
 
 use super::config::PhantomNamespace;
@@ -43,6 +43,13 @@ where
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
         self.hasher.hash(k)
     }
+}
+
+impl<E, P> HashGrouper for PhantomService<E, P>
+where
+    E: Endpoint,
+    P: Protocol,
+{
 }
 
 impl<E, Req, P> Topology for PhantomService<E, P>

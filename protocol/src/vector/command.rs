@@ -1,5 +1,5 @@
-use crate::{redis::command::CommandHasher, OpCode, Operation, Result};
-
+use crate::{redis::command::CommandHasher, vector::flager::KvFlager, Flag, HashedCommand, OpCode, Operation, Result};
+use ds::{Ext, MemGuard};
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[derive(Default, Debug)]
 pub struct CommandProperties {
@@ -12,6 +12,7 @@ pub struct CommandProperties {
     pub(crate) op: Operation,
     pub(crate) supported: bool,
     pub(crate) has_key: bool,                  // 是否有key
+    pub(crate) multi: bool,                    // 该命令是否可能会包含多个key
     pub(crate) can_hold_field: bool,           //能否持有field
     pub(crate) can_hold_where_condition: bool, // 能否持有where condition
     // 指令在不路由或者无server响应时的响应位置，
@@ -52,10 +53,58 @@ impl CommandProperties {
         Err(KvectorError::ReqInvalidBulkNum.into())
     }
 
-    pub(crate) fn flag(&self) -> crate::Flag {
-        let mut flag = crate::Flag::from_op(self.op_code, self.op);
+    pub(crate) fn flag(&self) -> Flag {
+        let mut flag = Flag::from_op(self.op_code, self.op);
         flag.set_noforward(self.noforward);
         flag
+    }
+    // 重建request：只需replace key即可
+    #[inline]
+    pub(super) fn build_request(
+        &self,
+        hash: i64,
+        first: bool,
+        mut flag: Flag,
+        key: &Vec<u8>,
+        data: &MemGuard,
+    ) -> HashedCommand {
+        use ds::Buffer;
+        let mut cmd = Vec::with_capacity(data.len());
+        let org_key_pos = flag.key_pos();
+        cmd.write_slice(&data.sub_slice(0, org_key_pos as usize));
+        // 写入key
+        cmd.push(b'$');
+        cmd.write(key.len().to_string());
+        cmd.write("\r\n");
+        cmd.write(key);
+        cmd.write("\r\n");
+
+        // 修改flag; key_pos不变
+        let org_field_pos = flag.field_pos();
+        let org_condition_pos = flag.condition_pos();
+        *flag.ext_mut() = 0; // reset pos
+        flag.set_key_pos(org_key_pos);
+        if first {
+            flag.set_mkey_first();
+        }
+        let other_start = if org_field_pos > 0 {
+            org_field_pos as u32
+        } else {
+            org_condition_pos
+        };
+        if other_start > 0 {
+            let oft = other_start - cmd.len() as u32;
+            cmd.write_slice(&data.sub_slice(other_start as usize, data.len() - other_start as usize));
+            if org_field_pos > 0 {
+                flag.set_field_pos(org_field_pos - oft as u8);
+            }
+            if org_condition_pos > 0 {
+                flag.set_condition_pos(org_condition_pos - oft);
+            }
+        }
+
+        let cmd: MemGuard = MemGuard::from_vec(cmd);
+        HashedCommand::new(cmd, hash, flag)
     }
 }
 
@@ -148,11 +197,11 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("vadd").arity(-2).op(Store).cmd_type(CommandType::VAdd).padding(pt[3]).has_key().can_hold_field(),
         // Cmd::new("vreplace").arity(-2).op(Store).cmd_type(CommandType::VReplace).padding(pt[3]).has_key().can_hold_field(),
         Cmd::new("vupdate").arity(-2).op(Store).cmd_type(CommandType::VUpdate).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
-        Cmd::new("vdel").arity(-2).op(Store).cmd_type(CommandType::VDel).padding(pt[3]).has_key().can_hold_where_condition(),
+        Cmd::new("vdel").arity(-2).op(Store).cmd_type(CommandType::VDel).padding(pt[3]).has_key().multi().can_hold_where_condition(),
         Cmd::new("vcard").route(Route::Si).arity(-2).op(Get).cmd_type(CommandType::VCard).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
 
         // vget 只是从timeline获取单条记录，所以route需要设置为timeline/main
-        Cmd::new("vget").route(Route::TimelineOrMain).arity(-2).op(Get).cmd_type(CommandType::VGet).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
+        Cmd::new("vget").route(Route::TimelineOrMain).arity(-2).op(Get).cmd_type(CommandType::VGet).padding(pt[3]).has_key().multi().can_hold_field().can_hold_where_condition(),
 
         // 对于timeline、si后缀指令，只是中间状态，为了处理方便，不额外增加字段，仍然作为独立指令来处理
         Cmd::new("vrange.timeline").route(Route::TimelineOrMain).arity(-2).op(Get).cmd_type(CommandType::VRangeTimeline).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
@@ -202,6 +251,10 @@ impl CommandProperties {
     }
     pub(crate) fn has_key(mut self) -> Self {
         self.has_key = true;
+        self
+    }
+    pub(crate) fn multi(mut self) -> Self {
+        self.multi = true;
         self
     }
     pub(crate) fn can_hold_field(mut self) -> Self {
