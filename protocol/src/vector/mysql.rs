@@ -197,7 +197,7 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
                     if mkey_num == 0 {
                         let _ = write!(f, "`{}`={}", key, Val(&keys[i]));
                     } else {
-                        debug_assert!(*cmd == CommandType::VDel || *cmd == CommandType::VGet);
+                        debug_assert!(*cmd == CommandType::VDel || *cmd == CommandType::VGet || *cmd == CommandType::VRange);
                         for j in 0..(mkey_num+1) {
                             if j == 0 {
                                 let _ = write!(f, "`{}` in ({}", key, Val(&keys[i+j]));
@@ -328,17 +328,7 @@ impl<'a, S: Strategy> VectorSqlBuilder for SqlBuilder<'a, S> {
     fn write_sql(&self, buf: &mut impl Write) -> crate::Result<()> {
         // TODO：使用所有commandType的具体类型，而非通配符_,避免新增type后，因未变更没有正确处理；后续考虑优化 fishermen
         match self.vcmd.cmd {
-            CommandType::VGet => {
-                let _ = write!(
-                    buf,
-                    "select {} from {} where {}",
-                    Select(self.vcmd.fields.get(0)),
-                    Table(self.strategy, &self.date, self.hash),
-                    KeysAndCondsAndOrderAndLimit(self.strategy, &self.vcmd, self.limit),
-                )
-                .map_err(|_| Error::RequestProtocolInvalid)?;
-            }
-            CommandType::VRange | CommandType::VRangeTimeline => {
+            CommandType::VRange | CommandType::VGet | CommandType::VRangeTimeline => {
                 let _ = write!(
                     buf,
                     "select {} from {} where {}",

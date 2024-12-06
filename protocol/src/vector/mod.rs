@@ -263,9 +263,10 @@ impl Vector {
             let key = packet.parse_cmd(cfg, &mut flag)?;
 
             if cfg.multi && key.is_some() {
-                // 这里可能是多个key，需要拆分、分组，属于同一个端口的，组成in即：select id in(key1,...,keyN)
-                // 根据keys格式，分割key，并且分组，分组后的key，按照hash分配到不同的后端；根据策略，prehash
-                // (shard_idx, year, yymmdd/yymm)三元组一致的，放一个请求
+                // 这里可能有多个key，单key请求按照原来的逻辑处理
+                // 属于同一个table的多个key，可以组成多key请求，即：select ... in(key1,...,keyN)
+                // 多key请求根据keys格式和策略分割key、并分组：(shard_idx, year, month, day)四元组一致，分为一组
+                // 然后按照分组，顺序构建请求，并发送；
                 if let Some(sorted_keys) = alg.group(&key.unwrap()) {
                     let org_cmd = packet.take(); // 原始请求
                     for i in 0..sorted_keys.len() {
