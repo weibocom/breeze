@@ -64,6 +64,7 @@ where
     E: Endpoint,
     P: Protocol,
 {
+    // 单key请求返回None
     #[inline]
     fn group(&self, k: &RingSlice) -> Option<Vec<(Vec<u8>, i64)>>  {
         let mut keys: Vec<RingSlice> = Vec::with_capacity(8);

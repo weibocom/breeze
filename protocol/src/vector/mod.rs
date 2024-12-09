@@ -267,15 +267,20 @@ impl Vector {
                 // 属于同一个table的多个key，可以组成多key请求，即：select ... in(key1,...,keyN)
                 // 多key请求根据keys格式和策略分割key、并分组：(shard_idx, year, month, day)四元组一致，分为一组
                 // 然后按照分组，顺序构建请求，并发送；
+                // TODO：当前只支持一组key，后续支持多组key
                 if let Some(sorted_keys) = alg.group(&key.unwrap()) {
+                    if sorted_keys.len() > 1 {
+                        log::debug!("+++ kvector temporary req error: only support keys in one table now");
+                        return Err(Error::RequestProtocolInvalid)
+                    }
                     let org_cmd = packet.take(); // 原始请求
                     for i in 0..sorted_keys.len() {
                         let (sorted_key, h) = &sorted_keys[i];
                         // 构建cmd，准备后续处理
-                        let req = cfg.build_request(*h, i==0, flag.clone(), sorted_key, &org_cmd);
-                        log::debug!("+++ kvector/{} req:{:?}", cfg.name, req);
+                        let cmd = cfg.build_request(*h, i==0, flag.clone(), sorted_key, &org_cmd);
+                        log::debug!("+++ kvector/{} req:{:?}", cfg.name, cmd);
                         let last = i==(sorted_keys.len()-1);
-                        process.process(req, last);
+                        process.process(cmd, last);
                     }
                     return Ok(())
                 }
