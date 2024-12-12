@@ -175,10 +175,12 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
             extra,
         ) = self;
 
-        // 对于vupdate、vdel，必须得有where语句
+        // 对于vupdate、si/timeline的vdel，必须得有where语句
+        // kv的vdel不需要where语句，因为kv的vdel是根据key来删除的
         match cmd {
             CommandType::VUpdate
-            | CommandType::VDel
+            | CommandType::VUpdateSi
+            | CommandType::VDelSi
             | CommandType::VUpdateTimeline
             | CommandType::VDelTimeline => {
                 if wheres.len() == 0 {
