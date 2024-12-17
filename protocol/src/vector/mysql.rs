@@ -191,8 +191,12 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
             _ => {}
         }
 
-        // 相比多个key
-        let mkey_num = keys.len() - strategy.keys().len();
+        // 有多个key，则使用 ...in
+        let mkey_num = if keys.len() > strategy.keys().len() {
+            keys.len() - strategy.keys().len()
+        } else {
+            0
+        };
         for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
             if let KeysType::Keys(key) = key {
                 if i == 0 {
