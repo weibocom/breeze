@@ -15,6 +15,7 @@ env:
   phantom: localhost:9303
   mysql: localhost:3306
   vector: localhost:3308
+  kv2vector: localhost:3309
   mq: localhost:56815
   min_key: 1
   max_key: 10000
@@ -31,7 +32,7 @@ jobs:
           docker run --rm --name breeze_ci_mysql4623  -p 4623:3306 -d parabala/mysqlci_with_schema:v0.0.2
           docker run --rm --name breeze_ci_mysql4624  -p 4624:3306 -d parabala/mysqlci_with_schema:v0.0.2
       - name: Prepare Vintage_MC_Redis
-        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci hustfisher/breeze:githubci115
+        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci hustfisher/breeze:githubci116
       - uses: actions/checkout@v3
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
@@ -53,6 +54,7 @@ jobs:
           curl http://127.0.0.1:8080/config/cloud/kv/testbreeze/kvmeshtest
           sleep 1
           curl http://127.0.0.1:8080/config/cloud/vector/testbreeze/vectortest
+          curl http://127.0.0.1:8080/config/cloud/vector/testbreeze/kv2vector
       - name: Create Socks
         run: |
           #ps -aux|grep breeze
@@ -66,6 +68,7 @@ jobs:
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+kv+testbreeze+kvmeshtest@kv:3306@kv
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+vector+testbreeze+vectortest@vector:3308@vector
+          touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+vector+testbreeze+kv2vector@vector:3309@vector
           touch /home/runner/work/breeze/socks/127.0.0.1:8080+config+cloud+mq+testbreeze+mcqmeshtest_1@msgque:56815@mq
           ls -all /home/runner/work/breeze/snapshot
           ls -all /home/runner/work/breeze/socks
@@ -94,7 +97,7 @@ jobs:
         run: cargo test -p tests --features github_workflow -p endpoint
       - name: wait until 2 mins
         run: |
-          port_list=(56810 56812 9302 9301 9303 3306 3308)  # 端口列表
+          port_list=(56810 56812 9302 9301 9303 3306 3308 3309 56815)  # 端口列表
           start=$(date +%s)  # 获取当前时间戳
           
           while true; do

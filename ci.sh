@@ -11,7 +11,7 @@ container_name=breeze_github_ci
 docker ps -a | grep "$container_name" && docker rm -f "$container_name"
 
 
-docker run --rm -d -v $brz_home:/data1/resource/breeze  --net="host"  --name "$container_name"  parabala/breeze:githubci108
+docker run --rm -d -v $brz_home:/data1/resource/breeze  --net="host"  --name "$container_name"  hustfisher/breeze:githubci116
 
 # rm -rf $brz_home/*
 mkdir -p $brz_home/logs
@@ -24,6 +24,7 @@ touch $brz_home/socks/127.0.0.1:8080+config+cloud+counterservice+testbreeze+mesh
 touch $brz_home/socks/127.0.0.1:8080+config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
 touch $brz_home/socks/127.0.0.1:8080+config+cloud+kv+testbreeze+kvmeshtest@kv:3306@kv
 touch $brz_home/socks/127.0.0.1:8080+config+cloud+vector+testbreeze+vectortest@vector:3308@vector
+touch $brz_home/socks/127.0.0.1:8080+config+cloud+vector+testbreeze+kv2vector@vector:3309@vector
 
 
 cargo build
@@ -38,6 +39,7 @@ export mc=localhost:9301
 export phantom=localhost:9303
 export mysql=localhost:3306
 export vector=localhost:3308
+export kv2vector=localhost:3309
 export min_key=1
 export max_key=10000
 export socks_dir=$brz_home/socks
@@ -45,7 +47,7 @@ export socks_dir=$brz_home/socks
 RUST_BACKTRACE=1 cargo test -p tests
 
 #等待mesh初始化，最多等待两分钟
-port_list=(56810 56812 9302 9301 9303 3306 3308)  # 端口列表
+port_list=(56810 56812 9302 9301 9303 3306 3308 3309)  # 端口列表
 start=$(date +%s)  # 获取当前时间戳
 
 while true; do
