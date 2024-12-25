@@ -160,7 +160,7 @@ pub fn escape_mysql_and_push(packet: &mut impl Write, c: u8) {
 
 pub trait VectorSqlBuilder: MysqlBinary {
     fn len(&self) -> usize;
-    fn write_sql(&self, buf: &mut impl Write);
+    fn write_sql(&self, buf: &mut impl Write) -> Result<()>;
 }
 
 impl MysqlBuilder {
@@ -198,7 +198,7 @@ impl MysqlBuilder {
         packet.write_next_packet_header();
         packet.push(sql_builder.mysql_cmd() as u8);
 
-        sql_builder.write_sql(&mut packet);
+        sql_builder.write_sql(&mut packet)?;
 
         packet.finish_current_packet();
         packet

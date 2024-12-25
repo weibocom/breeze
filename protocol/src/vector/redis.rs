@@ -7,13 +7,23 @@ pub(crate) const FIELD_BYTES: &'static [u8] = b"FIELD";
 pub(crate) const KVECTOR_SEPARATOR: u8 = b',';
 
 /// 根据parse的结果，此处进一步获得kvector的detail/具体字段信息，以便进行sql构建
-pub fn parse_vector_detail(cmd: RingSlice, flag: &Flag) -> crate::Result<VectorCmd> {
+pub fn parse_vector_detail(
+    cmd: RingSlice,
+    flag: &Flag,
+    config_aggregation: bool,
+) -> crate::Result<VectorCmd> {
     let data = Packet::from(cmd);
 
     let mut vcmd: VectorCmd = Default::default();
-    vcmd.cmd = get_cfg(flag.op_code())?.cmd_type;
+    let cmd_props = get_cfg(flag.op_code())?;
+    vcmd.cmd = cmd_props.cmd_type;
     // 解析keys
     parse_vector_key(&data, flag.key_pos() as usize, &mut vcmd)?;
+
+    // 只对strategy为aggregation的配置，才设置route，否则直接访问当前main库表
+    if config_aggregation {
+        vcmd.route = Some(cmd_props.route);
+    }
 
     // 解析fields
     let field_start = flag.field_pos() as usize;
@@ -151,7 +161,7 @@ pub(crate) fn validate_field_name(field_name: RingSlice) -> Result<()> {
 ///   6. vget：key不能为0
 pub(crate) fn validate_cmd(vcmd: &VectorCmd, cmd_type: CommandType) -> Result<()> {
     match cmd_type {
-        CommandType::VRange => {
+        CommandType::VRange | CommandType::VRangeTimeline | CommandType::VRangeSi => {
             // vrange 的fields数量不能大于1
             if vcmd.fields.len() > 1
                 || (vcmd.fields.len() == 1 && !vcmd.fields[0].0.equal_ignore_case(FIELD_BYTES))
@@ -159,17 +169,17 @@ pub(crate) fn validate_cmd(vcmd: &VectorCmd, cmd_type: CommandType) -> Result<()
                 return Err(crate::Error::RequestInvalidMagic);
             }
         }
-        CommandType::VAdd => {
+        CommandType::VAdd | CommandType::VAddSi | CommandType::VAddTimeline => {
             if vcmd.fields.len() == 0 || vcmd.wheres.len() > 0 {
                 return Err(crate::Error::RequestInvalidMagic);
             }
         }
-        CommandType::VUpdate => {
+        CommandType::VUpdate | CommandType::VUpdateTimeline | CommandType::VUpdateSi => {
             if vcmd.fields.len() == 0 {
                 return Err(crate::Error::RequestInvalidMagic);
             }
         }
-        CommandType::VDel => {
+        CommandType::VDel | CommandType::VDelSi | CommandType::VDelTimeline => {
             if vcmd.fields.len() > 0 {
                 return Err(crate::Error::RequestInvalidMagic);
             }
@@ -181,7 +191,7 @@ pub(crate) fn validate_cmd(vcmd: &VectorCmd, cmd_type: CommandType) -> Result<()
             }
         }
         CommandType::VCard => {}
-        _ => {
+        CommandType::Unknown => {
             panic!("unknown kvector cmd:{:?}", vcmd);
         }
     }

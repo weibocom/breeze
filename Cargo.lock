@@ -3148,6 +3148,7 @@ dependencies = [
  "byteorder",
  "bytes",
  "chrono",
+ "chrono-tz",
  "context",
  "criterion",
  "ctor 0.1.26",
@@ -3164,6 +3165,9 @@ dependencies = [
  "protocol",
  "rand",
  "rt",
+ "serde",
+ "serde_derive",
+ "serde_json",
  "sharding",
  "stream",
  "tokio",
@@ -3183,6 +3187,7 @@ dependencies = [
  "redis",
  "reqwest",
  "serde",
+ "serde_json",
  "url",
 ]
 

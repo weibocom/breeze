@@ -1,13 +1,14 @@
-use super::strategy::Postfix;
 use chrono::{Datelike, NaiveDate};
-use chrono_tz::Tz;
 use core::fmt::Write;
 use ds::RingSlice;
-use protocol::Error;
+use protocol::{
+    vector::{CommandType, KeysType, Postfix},
+    Error, DATE_YYMM, DATE_YYMMDD,
+};
 use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]
-pub struct Batch {
+pub struct Aggregation {
     db_prefix: String,
     table_prefix: String,
     table_postfix: Postfix,
@@ -18,7 +19,7 @@ pub struct Batch {
     si: Si,
 }
 
-impl Batch {
+impl Aggregation {
     pub fn new_with_db(
         db_prefix: String,
         table_prefix: String,
@@ -63,11 +64,6 @@ impl Batch {
         &self.hasher
     }
 
-    pub fn get_date(&self, _: &[RingSlice]) -> Result<NaiveDate, Error> {
-        let now = chrono::Utc::now().with_timezone(&Tz::Asia__Shanghai);
-        Ok(NaiveDate::from_ymd_opt(now.year(), now.month(), now.day()).unwrap())
-    }
-
     pub fn write_dname_with_hash(&self, buf: &mut impl Write, hash: i64) {
         let db_idx: usize = self.distribution.db_idx(hash);
         let _ = write!(buf, "{}_{}", self.db_prefix, db_idx);
@@ -101,12 +97,42 @@ impl Batch {
         self.si.write_database_table(buf, hash)
     }
 
-    pub(crate) fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_> {
-        Box::new(self.keys_name.iter().map(|x| Some(x)))
-    }
-
     pub(crate) fn keys(&self) -> &[String] {
         &self.keys_name
+    }
+
+    pub fn get_date(&self, cmd: CommandType, keys: &[RingSlice]) -> Result<NaiveDate, Error> {
+        match cmd {
+            CommandType::VRange | CommandType::VCard | CommandType::VRangeSi => {
+                Ok(NaiveDate::default())
+            }
+            //相比vrange多了一个日期key
+            _ => {
+                let date = keys.last().unwrap();
+                let ymd = match self.keys_name.last().unwrap().as_str() {
+                    DATE_YYMM => (
+                        date.try_str_num(0..0 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16
+                            + 2000,
+                        date.try_str_num(2..2 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                        1,
+                    ),
+                    DATE_YYMMDD => (
+                        date.try_str_num(0..0 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16
+                            + 2000,
+                        date.try_str_num(2..2 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                        date.try_str_num(4..4 + 2)
+                            .ok_or(Error::RequestProtocolInvalid)? as u16,
+                    ),
+                    _ => (0, 0, 0),
+                };
+                NaiveDate::from_ymd_opt(ymd.0.into(), ymd.1.into(), ymd.2.into())
+                    .ok_or(Error::RequestProtocolInvalid)
+            }
+        }
     }
 
     // pub(crate) fn get_next_date(&self, year: u16, month: u8) -> NaiveDate {
@@ -123,6 +149,51 @@ impl Batch {
 
     pub(crate) fn si_cols(&self) -> &[String] {
         &self.si_cols
+    }
+
+    pub(crate) fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_> {
+        Box::new(
+            self.keys_name
+                .iter()
+                .map(|key_name| match key_name.as_str() {
+                    DATE_YYMM | DATE_YYMMDD => KeysType::Time,
+                    &_ => KeysType::Keys(key_name),
+                }),
+        )
+    }
+
+    //校验动态信息，后续有重复校验的后面延迟校验
+    //上行、xx.timeline请求多带一个日期key，日期key固定在最后
+    pub(crate) fn check_vector_cmd(
+        &self,
+        vcmd: &protocol::vector::VectorCmd,
+    ) -> protocol::Result<()> {
+        match vcmd.cmd {
+            CommandType::VRange | CommandType::VCard | CommandType::VRangeSi => {
+                if vcmd.keys.len() != self.keys().len() - 1 {
+                    return Err(Error::RequestProtocolInvalid);
+                }
+                Ok(())
+            }
+            //相比vrange多了一个日期key
+            CommandType::VGet
+            | CommandType::VAdd
+            | CommandType::VDel
+            | CommandType::VUpdate
+            | CommandType::VAddTimeline
+            | CommandType::VDelTimeline
+            | CommandType::VRangeTimeline
+            | CommandType::VUpdateTimeline
+            | CommandType::VAddSi
+            | CommandType::VUpdateSi
+            | CommandType::VDelSi => {
+                if vcmd.keys.len() != self.keys().len() {
+                    return Err(Error::RequestProtocolInvalid);
+                }
+                Ok(())
+            }
+            CommandType::Unknown => panic!("not sup {:?}", vcmd.cmd),
+        }
     }
 }
 

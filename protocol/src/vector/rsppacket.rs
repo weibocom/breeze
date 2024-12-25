@@ -85,7 +85,11 @@ impl<'a, S: crate::Stream> ResponsePacket<'a, S> {
         // 如果是只有meta的ok packet，直接返回影响的列数，如insert/delete/update
         if let Or::B(ok) = meta {
             let affected = ok.affected_rows();
-            let cmd = self.build_final_affected_rows_rsp_cmd(affected);
+            let mut cmd = self.build_final_affected_rows_rsp_cmd(affected);
+            if affected > 0 {
+                // 目前affected只对kvector的聚合模式有效，但此处暂时无法区别req，所以统一都设置 fishermen
+                cmd.set_count(affected as u32);
+            }
             return Ok(cmd);
         }
 

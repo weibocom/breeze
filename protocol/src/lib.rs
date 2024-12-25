@@ -20,6 +20,7 @@ pub mod vector;
 pub use flag::*;
 pub use parser::Proto as Protocol;
 pub use parser::*;
+pub use vector::{DATE_YYMM, DATE_YYMMDD};
 
 pub use ds::{Bit, Ext};
 
