@@ -104,7 +104,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         let key = self.parse_key(flag)?;
 
         if self.bulks == 0 {
-            return Ok(Some(self.main_key(&key)));
+            // return Ok(Some(self.main_key(&key)));
+            return Ok(Some(key));
         }
 
         // 如果有field，则接下来解析fields，不管是否有field，统一先把where这个token消费掉，方便后续统一从condition位置解析
@@ -132,7 +133,8 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
         log::debug!("++++ after condition parsed oft:{}", self.oft);
 
         // 返回main-key，不带sub-key、ext-key
-        Ok(Some(self.main_key(&key)))
+        // Ok(Some(self.main_key(&key)))
+        Ok(Some(key))
     }
 
     #[inline]
@@ -164,7 +166,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
 
     /// 获取主key,不带sub-key、ext-key
     #[inline]
-    fn main_key(&self, key: &RingSlice) -> RingSlice {
+    pub(crate) fn main_key(&self, key: &RingSlice) -> RingSlice {
         let main_key_len = key.find(0, KEY_SEPERATOR).map_or(key.len(), |len| len);
         key.sub_slice(0, main_key_len)
     }
@@ -287,6 +289,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
     #[inline]
     pub(super) fn take(&mut self) -> ds::MemGuard {
         assert!(self.oft_last < self.oft, "packet:{}", self);
+        log::debug!("take: oft_last{} oft:{}, packet:{}",self.oft_last, self.oft,  self);
         let data = self.data.sub_slice(self.oft_last, self.oft - self.oft_last);
         self.oft_last = self.oft;
         // 重置bulks和cmd_type

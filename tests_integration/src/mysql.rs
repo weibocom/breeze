@@ -7,6 +7,9 @@ const ERR_INVALID_ARG: &str = "Invalid arguments provided";
 // NotStored 异常对应的响应，code 5 对应 RespStatus::NotStored
 const ERR_NOT_STORED: &str = "Unknown error occurred with code: 5";
 
+//ci环境的mysql默认的 max_allowed_packet为4194304，content colume 长度为8KB,但针对2<<16-1的MAX_PAYLOAD_LEN也测试过
+pub const MAX_PAYLOAD_LEN: usize = 8 * 1024;
+
 //val中有非assic字符和需要mysql转义的字符
 #[test]
 #[rustfmt::skip]
@@ -53,8 +56,6 @@ fn delete() {
     assert_eq!(None, client.get::<String>(key).unwrap());
 }
 
-//ci环境的mysql默认的 max_allowed_packet为4194304，content colume 长度为8KB,但针对2<<16-1的MAX_PAYLOAD_LEN也测试过
-const MAX_PAYLOAD_LEN: usize = 8 * 1024;
 //构建一个sql长度为MAX_PAYLOAD_LEN的packet
 #[test]
 fn set_huge_payload() {

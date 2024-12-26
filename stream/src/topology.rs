@@ -1,11 +1,11 @@
 use discovery::TopologyReadGuard;
-use ds::ReadGuard;
+use ds::{ReadGuard, RingSlice};
 use endpoint::{Endpoint, Topology};
 use protocol::{
     callback::{Callback, CallbackPtr},
     request::Request,
 };
-use sharding::hash::{Hash, HashKey};
+use sharding::hash::{Hash, HashKey, HashGrouper};
 
 pub trait TopologyCheck: Sized {
     fn refresh(&mut self) -> bool;
@@ -75,6 +75,13 @@ impl<T: Topology> Hash for CheckedTopology<T> {
     #[inline(always)]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
         self.top.hash(k)
+    }
+}
+
+impl<T: Topology> HashGrouper for CheckedTopology<T> {
+    #[inline(always)]
+    fn group(&self,key: &RingSlice) -> Option<Vec<(Vec<u8>, i64)>> {
+        self.top.group(key)
     }
 }
 

@@ -5,16 +5,16 @@ use chrono::{Datelike, NaiveDate};
 use discovery::dns;
 use discovery::dns::IPPort;
 use discovery::TopologyWrite;
-use ds::MemGuard;
+use ds::{MemGuard, RingSlice};
 use protocol::kv::{ContextStatus, MysqlBuilder};
 use protocol::vector::attachment::{BackendType, VAttach, VectorAttach};
-use protocol::vector::redis::parse_vector_detail;
-use protocol::vector::{command, CommandType, VectorCmd};
+use protocol::vector::redis::{parse_vector_detail, KVECTOR_SEPARATOR};
+use protocol::vector::{command, CommandType, Postfix, VectorCmd};
 use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
 use protocol::{Operation, Protocol};
-use sharding::hash::{Hash, HashKey};
+use sharding::hash::{Hash, HashKey, HashGrouper};
 
 use crate::dns::DnsConfig;
 use crate::Timeout;
@@ -56,6 +56,98 @@ where
     #[inline]
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
         self.strategist.hasher().hash(k)
+    }
+}
+
+impl<E, P> HashGrouper for VectorService<E, P>
+where
+    E: Endpoint,
+    P: Protocol,
+{
+    // 单key请求返回None
+    #[inline]
+    fn group(&self, k: &RingSlice) -> Option<Vec<(Vec<u8>, i64)>>  {
+        let mut keys: Vec<RingSlice> = Vec::with_capacity(8);
+        let mut oft:usize = 0;
+        loop {
+            if oft >= k.len() {
+                break;
+            }
+            // 从keys中split出','分割的key
+            let idx = k
+                .find(oft, KVECTOR_SEPARATOR)
+                .unwrap_or(k.len());
+            keys.push(k.sub_slice(oft, idx - oft));
+            oft = idx + 1;
+        }
+
+        let keys_name = self.strategist.keys();
+        let step = keys_name.len();
+        if step == 0 || keys.len() <= step || keys.len() % step != 0 {
+            return None;
+        }
+        // 接下来从key解析出时间信息
+        let cmdtype = CommandType::VGet;  // 满足get_date函数第一个参数
+        let mut group_map: HashMap<(usize, u16, u8, u8), Vec<(usize, i64)>> = HashMap::new();
+        for i in (0..keys.len()).step_by(step) {
+            let k = &keys[i..i + step];
+            match self.strategist.get_date(cmdtype, k) {
+                Ok(date) => {
+                    let y = date.year() as u16;
+                    let m = date.month() as u8;
+                    let d = match &self.strategist.table_postfix() {
+                        Postfix::YYMMDD => date.day() as u8,
+                        _ => 0,
+                    };
+                    let hash = self.strategist.hasher().hash(&k[0]);
+                    let shard_idx = self.strategist.distribution().index(hash);
+
+                    // Store the index of each key in the groups vector to the hashmap
+                    group_map.entry((shard_idx, y, m, d))
+                        .or_insert_with(Vec::new)
+                        .push((i,hash));
+                    log::debug!("key grouped: shard_idx {} y {} m {} d {} key {} hash {}", shard_idx, y, m, d, keys[i], hash);
+                }
+                Err(_) => return None
+            }
+        }
+        log::debug!("key grouped index: {:?} ", group_map);
+
+        // step==1: key每组1个元素，key包含时间信息
+        // step>2:  key每组step个元素，倒数第一个key就是时间信息
+        let mut groups: Vec<(Vec<u8>, i64)> = Vec::with_capacity(16);
+        for (_, indices) in group_map {
+            let mut concatenated_key: Vec<u8> = Vec::with_capacity(256);
+            let mut hash :i64 = 0;
+            if step == 1 {
+                // If step is 1, concatenate keys at the given indices with ','
+                for i in indices {
+                    keys[i.0].copy_to_vec(&mut concatenated_key);
+                    concatenated_key.push(b',');
+                    hash = i.1;
+                }
+                if !concatenated_key.is_empty() {
+                    // Remove the trailing comma
+                    concatenated_key.pop();
+                    groups.push((concatenated_key, hash));
+                }
+            } else {
+                    // If step is greater than 1, concatenate keys in the specified range and format
+                    let mut last: usize = 0;
+                    for i in indices {
+                        last = i.0;
+                        for j in [last, last + step - 1] {
+                            keys[j].copy_to_vec(&mut concatenated_key);
+                            concatenated_key.push(b',');
+                        }
+                        hash = i.1;
+                    }
+                    keys[last + step - 1].copy_to_vec(&mut concatenated_key);
+                    // concatenated_key.push_str(keys[last + step - 1].to_string().as_str());
+                    groups.push((concatenated_key, hash));
+            }
+        }
+        Some(groups)
     }
 }
 
