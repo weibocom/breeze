@@ -368,6 +368,7 @@ impl RetrieveAttach {
         self.body.push(body_data);
         self.body_token_count += rows * columns;
         self.left_count = self.left_count.saturating_sub(rows);
+        log::debug!("left_count: {}", self.left_count);
     }
 
     #[inline]
@@ -413,6 +414,7 @@ impl RetrieveAttach {
                 }
             }
         }
+        log::debug!("si len: {},content: {:?}", self.si.len(), self.si);
         self.si.len() > 0
     }
     #[inline]
