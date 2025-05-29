@@ -1,0 +1,2 @@
+[target.aarch64-unknown-linux-musl]
+image = "registry.api.weibo.com/weibo_rd_if/breezebuild_aarch64_musl:1"
