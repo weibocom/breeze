@@ -1,19 +1,15 @@
-use openssl::pkey::PKey;
-use openssl::rsa::Padding;
+use rsa::{pkcs8::DecodePrivateKey, Pkcs1v15Encrypt, RsaPrivateKey};
 
-// key_pem: rsa私钥,pem格式
-// encrypted_data: 加密数据
 pub fn decrypt_password(
     key_pem: &String,
     encrypted_data: &Vec<u8>,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let private_key = PKey::private_key_from_pem(key_pem.as_bytes())?;
-    let rsa = private_key.rsa()?;
-    // 缓冲区大小必须 >= 密钥长度
-    let mut decrypted_data = Vec::new();
-    decrypted_data.resize(rsa.size() as usize, 0);
-    rsa.private_decrypt(&encrypted_data, &mut decrypted_data, Padding::PKCS1)?;
-    // 去除多余的0，只保留原始数据
-    decrypted_data.retain(|&x| x != 0);
+    // 从PEM格式解析私钥
+    let private_key = RsaPrivateKey::from_pkcs8_pem(key_pem)?;
+
+    // 使用PKCS1填充方式解密
+    let decrypted_data = private_key.decrypt(Pkcs1v15Encrypt, encrypted_data)?;
+
+    // 不需要手动去除多余的0，rsa库已经处理好了
     Ok(decrypted_data)
 }
