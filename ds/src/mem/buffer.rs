@@ -124,9 +124,9 @@ impl RingBuffer {
         rs.visit_seg(0, |p, l| {
             let offset = self.mask(self.write);
             let n = l.min(self.size - offset);
-            copy(p, self.data.as_ptr().add(offset), n);
+            unsafe { copy(p, self.data.as_ptr().add(offset), n) };
             if n < l {
-                copy(p.add(n), self.data.as_ptr(), l - n);
+                unsafe { copy(p.add(n), self.data.as_ptr(), l - n) };
             }
             self.advance_write(l);
         });

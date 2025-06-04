@@ -3,15 +3,15 @@ use std::{
     mem::MaybeUninit,
     ptr::{self, NonNull},
     sync::{
-        atomic::{AtomicBool, AtomicU8, Ordering::*},
         Arc,
+        atomic::{AtomicBool, AtomicU8, Ordering::*},
     },
 };
 
 use crate::BackendQuota;
-use ds::{time::Instant, AtomicWaker};
+use ds::{AtomicWaker, time::Instant};
 
-use crate::{request::Request, Command, Error, HashedCommand};
+use crate::{Command, Error, HashedCommand, request::Request};
 
 //const REQ_TRY_MAX_COUNT: u8 = 3;
 
@@ -217,7 +217,7 @@ impl CallbackContext {
     // 在使用前，先得判断inited
     #[inline]
     unsafe fn unchecked_response(&self) -> &Command {
-        self.response.assume_init_ref()
+        unsafe { self.response.assume_init_ref() }
     }
     #[inline]
     pub fn complete(&self) -> bool {
