@@ -12,7 +12,7 @@
 use crate::ci::env::Mesh;
 use assert_panic::assert_panic;
 use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use redis::{Client, Commands, Connection};
 use std::collections::HashMap;
 use std::vec;
@@ -22,7 +22,7 @@ use crate::ci::env::exists_key_iter;
 #[allow(dead_code)]
 fn rand_num() -> u32 {
     let mut rng = rand::thread_rng();
-    rng.gen::<u32>()
+    rng.r#gen::<u32>()
     //rng.gen_range(0..18446744073709551615)
     //18446744073709551
 }
