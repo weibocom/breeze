@@ -172,7 +172,7 @@ impl<T> Distance<T> {
     #[inline]
     pub unsafe fn get_unchecked(&self, idx: usize) -> &T {
         debug_assert!(idx < self.len());
-        &self.replicas.get_unchecked(idx).0
+        unsafe { &self.replicas.get_unchecked(idx).0 }
     }
     // 从local选择一个实例
     #[inline]
@@ -237,7 +237,7 @@ impl<T> Distance<T> {
         T: Endpoint,
     {
         let idx = self.select_next_idx(idx, runs);
-        (idx, &self.replicas.get_unchecked(idx).0)
+        (idx, unsafe { &self.replicas.get_unchecked(idx).0 })
     }
     pub fn into_inner(self) -> Vec<T> {
         self.replicas.into_iter().map(|(r, _)| r).collect()

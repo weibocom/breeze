@@ -12,7 +12,7 @@ impl tokio::io::AsyncRead for Stream {
     fn poll_read( self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut tokio::io::ReadBuf<'_>) -> Poll<Result<()>> {
         match self.get_mut() {
             $(
-            Self::$var(ref mut stream) => tokio::io::AsyncRead::poll_read(Pin::new(stream), cx, buf),
+            &mut Self::$var(ref mut stream) => tokio::io::AsyncRead::poll_read(Pin::new(stream), cx, buf),
             )+
         }
     }
@@ -23,7 +23,7 @@ impl tokio::io::AsyncWrite for Stream {
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
         match self.get_mut() {
             $(
-            Stream::$var(ref mut stream) => tokio::io::AsyncWrite::poll_write(Pin::new(stream), cx, buf),
+            &mut Stream::$var(ref mut stream) => tokio::io::AsyncWrite::poll_write(Pin::new(stream), cx, buf),
             )+
         }
     }
@@ -31,7 +31,7 @@ impl tokio::io::AsyncWrite for Stream {
     fn poll_flush(self: Pin<&mut Self>,cx: &mut Context<'_>) -> Poll<Result<()>> {
         match self.get_mut() {
             $(
-            Stream::$var(ref mut stream) => tokio::io::AsyncWrite::poll_flush(Pin::new(stream), cx),
+            &mut Stream::$var(ref mut stream) => tokio::io::AsyncWrite::poll_flush(Pin::new(stream), cx),
             )+
         }
     }
@@ -39,7 +39,7 @@ impl tokio::io::AsyncWrite for Stream {
     fn poll_shutdown(self: Pin<&mut Self>,cx: &mut Context<'_>) -> Poll<Result<()>> {
         match self.get_mut() {
             $(
-            Stream::$var(ref mut stream) => tokio::io::AsyncWrite::poll_shutdown(Pin::new(stream), cx),
+            &mut Stream::$var(ref mut stream) => tokio::io::AsyncWrite::poll_shutdown(Pin::new(stream), cx),
             )+
         }
     }
