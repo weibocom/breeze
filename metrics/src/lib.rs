@@ -47,7 +47,9 @@ impl Metric {
     pub unsafe fn as_mut(&self) -> &mut Self {
         assert!(self.item().is_global(), "{self:?}");
         #[allow(invalid_reference_casting)]
-        &mut *(self as *const _ as *mut _)
+        unsafe {
+            &mut *(self as *const _ as *mut _)
+        }
     }
     #[inline(always)]
     fn item(&self) -> &Item {

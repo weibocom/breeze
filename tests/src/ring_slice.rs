@@ -163,11 +163,11 @@ fn copy_to_slice() {
             0 => (0, cap),
             1 => (cap, cap * 2),
             2 => {
-                let start = rng.gen::<usize>() & mask;
+                let start = rng.r#gen::<usize>() & mask;
                 (start, start + cap)
             }
             _ => {
-                let start = rng.gen::<usize>() & mask;
+                let start = rng.r#gen::<usize>() & mask;
                 let end = start + rng.gen_range(1..cap);
                 (start, end)
             }

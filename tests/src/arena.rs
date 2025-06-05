@@ -44,7 +44,7 @@ fn test_ephemera() {
 fn random_once() {
     use rand::Rng;
     let mut rng = rand::thread_rng();
-    let mut total = rng.gen::<u16>() as usize;
+    let mut total = rng.r#gen::<u16>() as usize;
     let mut pending = std::collections::LinkedList::new();
     let mut seq = 0;
 
@@ -55,7 +55,7 @@ fn random_once() {
             seq += 1;
             let ptr = ARENA.alloc(V::new(v));
             assert_eq!(unsafe { (&*ptr.as_ptr()).0 }, v);
-            let drop_immediately: bool = rng.gen();
+            let drop_immediately: bool = rng.r#gen();
             if drop_immediately {
                 ARENA.dealloc(ptr);
             } else {

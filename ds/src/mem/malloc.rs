@@ -35,13 +35,13 @@ mod inner {
         #[inline]
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
             Stats.alloc(layout.size());
-            MiMalloc.alloc(layout)
+            unsafe { MiMalloc.alloc(layout) }
         }
 
         #[inline]
         unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
             Stats.free(_layout.size());
-            MiMalloc.dealloc(ptr, _layout)
+            unsafe { MiMalloc.dealloc(ptr, _layout) }
         }
     }
 
