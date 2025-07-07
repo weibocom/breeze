@@ -25,8 +25,8 @@ pub use rawsuffix::RawSuffix;
 
 pub mod crc;
 
+use self::{bkdrsub::BkdrsubDelimiter, crc64::Crc64, fnv1::Fnv1F32, fnv1::Fnv1aF64};
 use enum_dispatch::enum_dispatch;
-use self::{bkdrsub::Bkdrsub, crc64::Crc64, fnv1::Fnv1F32, fnv1::Fnv1aF64};
 
 // 占位hash，主要用于兼容服务框架，供mq等业务使用
 pub const HASH_PADDING: &str = "padding";
@@ -69,7 +69,7 @@ pub enum Hasher {
     Padding(Padding),
     Raw(Raw), // redis raw, long型字符串直接用数字作为hash
     Bkdr(Bkdr),
-    Bkdrsub(Bkdrsub),
+    BkdrsubDelimiter(BkdrsubDelimiter),
     BkdrAbsCrc32(BkdrAbsCrc32), // 混合三种hash：先bkdr，再abs，最后进行crc32计算
     Crc32(Crc32),
     Crc32Short(Crc32Short),         // mc short crc32
@@ -120,7 +120,8 @@ impl Hasher {
             return match alg_parts[0] {
                 HASH_PADDING => Self::Padding(Default::default()),
                 "bkdr" => Self::Bkdr(Default::default()),
-                "bkdrsub" => Self::Bkdrsub(Default::default()),
+                "bkdrsub" => Self::BkdrsubDelimiter(BkdrsubDelimiter::from('_' as u8)),
+                "bkdrsubhat" => Self::BkdrsubDelimiter(BkdrsubDelimiter::from('^' as u8)),
                 "bkdrabscrc32" => Self::BkdrAbsCrc32(Default::default()),
                 "raw" => Self::Raw(Raw::from(Default::default())),
                 "crc32" => Self::Crc32(Default::default()),

@@ -19,6 +19,7 @@ pub struct Handler<'r, Req, P, S> {
     s: S,
     parser: P,
     rtt: Metric,
+    err: Metric,
     host_metric: HostMetric,
 
     num: Number,
@@ -43,10 +44,10 @@ where
         let me = &mut *self;
 
         let request = me.poll_request(cx)?;
+        // 必须要先flush，否则可能有请求未发送导致超时。
         let flush = me.poll_flush(cx)?;
         let response = me.poll_response(cx)?;
 
-        // 必须要先flush，否则可能有请求未发送导致超时。
         ready!(flush);
         ready!(response);
         ready!(request);
@@ -63,12 +64,14 @@ where
         data.enable();
         let name = path.clone();
         let rtt = path.rtt("req");
+        let err = path.qps("be_err");
         Self {
             data,
             pending: VecDeque::with_capacity(31),
             s,
             parser,
             rtt,
+            err,
             host_metric: HostMetric::from(path),
             num: Number::default(),
             req_buf: Vec::with_capacity(4),
@@ -127,6 +130,7 @@ where
             // 在这是安全的，因为在L110已经读取所有数据，并且这当中不会中断
             unsafe { self.req_buf.set_len(0) };
         }
+        debug_assert_eq!(self.req_buf.len(), 0);
         Poll::Ready(Err(Error::ChanReadClosed))
     }
     #[inline]
@@ -141,8 +145,12 @@ where
                 }
                 let (req, start) = self.pending.pop_front().expect("take response");
                 self.num.rx();
-                // 统计请求耗时。
+                // 统计请求耗时、异常响应
                 self.rtt += start.elapsed();
+                if self.parser.metric_err(req.operation()) && !cmd.ok() {
+                    self.err += 1;
+                }
+
                 self.parser.check(&*req, &cmd);
                 req.on_complete(&self.parser, cmd);
                 continue;
@@ -196,8 +204,17 @@ where
     }
     #[inline(always)]
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        ready!(Pin::new(&mut self.s).poll_flush(cx))?;
-        Poll::Ready(Ok(()))
+        match Pin::new(&mut self.s).poll_flush(cx) {
+            Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e.into())),
+            //仅仅有异步请求未flush成功，则检查是否存在大量异步请求内存占用，如果占用大于等于512M，则关闭连接。
+            Poll::Pending => {
+                if self.pending.len() == 0 && self.s.unread_len() >= 512 * 1024 * 1024 {
+                    return Poll::Ready(Err(Error::TxBufFull));
+                }
+                Poll::Pending
+            }
+        }
     }
 }
 impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> rt::ReEnter

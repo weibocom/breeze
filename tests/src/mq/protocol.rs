@@ -1,10 +1,10 @@
-use std::cell::UnsafeCell;
-
 use crate::proto_hook;
 use protocol::{
     msgque::{MsgQue, OP_GET, OP_QUIT, OP_SET, OP_STATS, OP_VERSION},
-    Attachment, BufRead, Commander, Error, HashedCommand, Metric, Proto,
+    Error, Proto,
 };
+
+use protocol::BufRead;
 
 /// 请求以任意长度发送
 #[test]
@@ -225,67 +225,6 @@ fn test_rsp() {
             assert!(!rsp.ok());
             assert_eq!(stream.len(), 0);
         }
-    }
-}
-
-#[allow(dead_code)]
-struct TestCtx {
-    req: HashedCommand,
-    metric: TestMetric,
-}
-
-impl TestCtx {
-    #[allow(dead_code)]
-    fn new(req: HashedCommand) -> Self {
-        Self {
-            req,
-            metric: TestMetric {
-                item: UnsafeCell::new(TestMetricItem {}),
-            },
-        }
-    }
-}
-
-struct TestMetricItem {}
-impl std::ops::AddAssign<i64> for TestMetricItem {
-    fn add_assign(&mut self, _rhs: i64) {}
-}
-impl std::ops::AddAssign<bool> for TestMetricItem {
-    fn add_assign(&mut self, _rhs: bool) {}
-}
-
-struct TestMetric {
-    item: UnsafeCell<TestMetricItem>,
-}
-impl Metric<TestMetricItem> for TestMetric {
-    fn get(&self, _name: protocol::MetricName) -> &mut TestMetricItem {
-        unsafe { &mut *self.item.get() }
-    }
-}
-
-impl Commander<TestMetric, TestMetricItem> for TestCtx {
-    fn request_mut(&mut self) -> &mut HashedCommand {
-        todo!()
-    }
-
-    fn request(&self) -> &HashedCommand {
-        &self.req
-    }
-
-    fn request_shard(&self) -> usize {
-        todo!()
-    }
-
-    fn metric(&self) -> &TestMetric {
-        &self.metric
-    }
-
-    fn ctx(&self) -> u64 {
-        todo!()
-    }
-
-    fn attachment(&self) -> Option<&Attachment> {
-        todo!()
     }
 }
 

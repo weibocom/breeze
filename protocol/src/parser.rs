@@ -129,6 +129,9 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
         1_u8
     }
 
+    fn metric_err(&self, _req_op: Operation) -> bool {
+        true
+    }
     #[inline]
     fn update_attachment(&self, _attachment: &mut Attachment, _responsee: &mut Command) -> bool {
         panic!("unreachable");
@@ -148,7 +151,6 @@ pub trait RequestProcessor {
     fn process(&mut self, req: HashedCommand, last: bool);
 }
 
-// TODO Command实质就是response，考虑直接用response？ fishermen
 pub struct Command {
     ok: bool,
     // header 只对部分请求有效，改为option
@@ -186,7 +188,6 @@ impl Command {
             cmd: body,
         }
     }
-
     pub fn from_ok(cmd: ds::MemGuard) -> Self {
         Self::from(true, cmd)
     }
@@ -291,13 +292,14 @@ impl HashedCommand {
     }
     #[inline]
     pub fn reshape(&mut self, mut dest_cmd: MemGuard) {
-        if self.origin_cmd.is_none() {
-            // 将dest cmd设给cmd，并将换出的cmd保留在origin_cmd中
-            mem::swap(&mut self.cmd, &mut dest_cmd);
-            self.origin_cmd = Some(dest_cmd);
-        } else {
-            self.cmd = dest_cmd;
-        }
+        assert!(
+            self.origin_cmd.is_none(),
+            "origin cmd should be none: {:?}",
+            self.origin_cmd
+        );
+        // 将dest cmd设给cmd，并将换出的cmd保留在origin_cmd中
+        mem::swap(&mut self.cmd, &mut dest_cmd);
+        self.origin_cmd = Some(dest_cmd);
     }
 }
 

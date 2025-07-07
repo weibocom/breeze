@@ -434,11 +434,11 @@ impl StoreAttach {
 
 #[cfg(test)]
 mod tests {
-    use ds::MemGuard;
+    use super::*;
 
     use crate::ResponseHeader;
 
-    use super::*;
+    use ds::MemGuard;
     #[test]
     fn test_attach_si() {
         let header: ResponseHeader = ResponseHeader::new(

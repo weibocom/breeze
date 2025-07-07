@@ -105,7 +105,7 @@ impl<P, Req> BackendChecker<P, Req> {
             let handler = Handler::from(rx, stream, p, path_addr.clone());
             let handler = Entry::timeout(handler, Timeout::from(self.timeout.ms()));
             let ret = handler.await;
-            println!(
+            log::info!(
                 "backend error {:?} => {:?} finish: {}",
                 path_addr,
                 ret,
@@ -120,6 +120,10 @@ impl<P, Req> BackendChecker<P, Req> {
                 }
                 Error::ChanReadClosed => {
                     debug_assert!(!self.finish.get(), "channel closed but not finish");
+                }
+                Error::TxBufFull => {
+                    let mut buf_full = path_addr.num("buf_full");
+                    buf_full += 1;
                 }
                 Error::UnexpectedData | _ => {
                     let mut unexpected_resp = Path::base().num("unexpected_resp");

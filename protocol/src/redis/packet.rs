@@ -486,10 +486,7 @@ impl Packet {
     pub fn num(&self, oft: &mut usize) -> crate::Result<usize> {
         // 至少4个字节
         if *oft + 4 <= self.len() {
-            debug_assert!(
-                self[*oft] == b'*' || self[*oft] == b'$' || self[*oft] == b':',
-                "packet:{self:?}"
-            );
+            debug_assert!(self[*oft] == b'*' || self[*oft] == b'$', "packet:{self:?}");
             let start = *oft;
             *oft += num_skips(self.at(*oft + 1));
             let mut val: usize = 0;
@@ -515,7 +512,7 @@ impl Packet {
                 }
                 if b.is_ascii_digit() {
                     val = val * 10 + (b - b'0') as usize;
-                    if val <= std::usize::MAX as usize {
+                    if val <= std::u32::MAX as usize {
                         continue;
                     }
                 }

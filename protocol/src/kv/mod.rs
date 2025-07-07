@@ -26,11 +26,11 @@ use super::Protocol;
 use crate::kv::client::Client;
 use crate::kv::error::Error;
 use crate::vector::attachment::BackendType;
-use crate::Command;
 use crate::HandShake;
 use crate::HashedCommand;
 use crate::RequestProcessor;
 use crate::Stream;
+use crate::{Command, Operation};
 use ds::RingSlice;
 
 use sharding::hash::Hash;
@@ -250,6 +250,15 @@ impl Protocol for Kv {
         I: crate::MetricItem,
     {
         None
+    }
+
+    // kv走mc binary协议，get miss属于error不统计，只统计上行请求
+    #[inline]
+    fn metric_err(&self, req_op: Operation) -> bool {
+        match req_op {
+            Operation::Store => true,
+            _ => false,
+        }
     }
 }
 

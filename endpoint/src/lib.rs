@@ -24,6 +24,8 @@ const TO_MYSQL_S: Timeout = Timeout::from_millis(500);
 const TO_VECTOR_M: Timeout = Timeout::from_millis(1000);
 const TO_VECTOR_S: Timeout = Timeout::from_millis(500);
 const TO_UUID: Timeout = Timeout::from_millis(100);
+const TO_MIN_MS: u32 = 20;  // timeout最小值，单位ms
+const TO_MAX_MS: u32 = 6000; // timeout最大值，单位ms
 
 #[derive(Copy, Clone, Debug)]
 pub struct Timeout {
@@ -39,7 +41,7 @@ impl Timeout {
         me
     }
     pub fn adjust(&mut self, ms: u32) {
-        self.ms = ms.max(100).min(6000) as u16;
+        self.ms = ms.max(TO_MIN_MS).min(TO_MAX_MS) as u16;
     }
     pub fn to(mut self, ms: u32) -> Self {
         if ms > 0 {
