@@ -6,6 +6,7 @@
 pub struct ModRange {
     slot: u64,
     interval: u64,
+    shards: usize,
 }
 
 // ModRange 分布方法，默认总范围是[0,256)，否则指定slot
@@ -17,6 +18,7 @@ impl ModRange {
         ModRange {
             slot,
             interval: slot / shards as u64,
+            shards,
         }
     }
 
@@ -27,6 +29,11 @@ impl ModRange {
             val = val.wrapping_abs();
         }
         let rs = val as u64 / self.interval;
+        if rs >= self.shards as u64 {
+            // 超出范围，返回最后一个分片
+            log::warn!("found modrange slot out of bound, rs:{}, shards:{}", rs, self.shards);
+            return self.shards - 1;
+        }
         rs as usize
     }
 }
