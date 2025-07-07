@@ -1,9 +1,9 @@
 use super::{command::get_cfg, flager::KvFlager, *};
-
 use crate::{Flag, Packet, Result};
 use ds::RingSlice;
 
 pub(crate) const FIELD_BYTES: &'static [u8] = b"FIELD";
+
 pub(crate) const KVECTOR_SEPARATOR: u8 = b',';
 
 /// 根据parse的结果，此处进一步获得kvector的detail/具体字段信息，以便进行sql构建

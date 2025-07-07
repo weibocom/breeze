@@ -119,7 +119,7 @@ impl Strategist {
         }
     }
 
-pub(crate) fn check_vector_cmd(&self, vcmd: &protocol::vector::VectorCmd) -> Result<()> {
+    pub(crate) fn check_vector_cmd(&self, vcmd: &protocol::vector::VectorCmd) -> Result<()> {
         match self {
             Strategist::VectorTime(inner) => inner.check_vector_cmd(vcmd),
             Strategist::Aggregation(inner) => inner.check_vector_cmd(vcmd),

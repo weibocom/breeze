@@ -173,7 +173,6 @@ mod proto_hook {
         fn ctx(&self) -> u64 {
             todo!()
         }
-
         fn attachment(&self) -> Option<&protocol::Attachment> {
             todo!()
         }

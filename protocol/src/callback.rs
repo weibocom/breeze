@@ -182,7 +182,7 @@ impl CallbackContext {
             // 当前重试条件为 rsp == None || ("mc" && !rsp.ok())
             if self.inited() {
                 // 优先筛出正常的请求，便于理解
-                // rsp.ok
+                // rsp.ok 不需要重试
                 if unsafe { self.unchecked_response().ok() } {
                     return false;
                 }

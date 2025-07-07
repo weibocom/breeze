@@ -78,7 +78,6 @@ impl Flag {
         self.op = op;
     }
 }
-
 #[derive(Debug, Default)]
 pub struct ResponseHeader {
     pub(crate) header: Vec<u8>,
