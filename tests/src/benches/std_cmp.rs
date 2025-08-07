@@ -1,4 +1,4 @@
-use criterion::{black_box, Criterion};
+use criterion::{Criterion, black_box};
 pub(super) fn bench_num_to_str(c: &mut Criterion) {
     let mut group = c.benchmark_group("num_to_str");
     let end = 999;
@@ -41,7 +41,7 @@ pub(super) fn bench_num_to_str(c: &mut Criterion) {
 pub(super) fn bench_mod(c: &mut Criterion) {
     use rand::Rng;
     let mut r = rand::thread_rng();
-    let (range, interval) = if r.gen::<bool>() {
+    let (range, interval) = if r.r#gen::<bool>() {
         (1024usize, 32usize)
     } else {
         (512, 32)
