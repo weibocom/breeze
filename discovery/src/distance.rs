@@ -250,11 +250,7 @@ impl Addr for String {
 
 impl<A: Addr> Addr for Vec<A> {
     fn addr(&self) -> &str {
-        if self.len() == 0 {
-            ""
-        } else {
-            &self[0].addr()
-        }
+        if self.len() == 0 { "" } else { &self[0].addr() }
     }
     fn visit(&self, f: &mut dyn FnMut(&str)) {
         for a in self {
@@ -300,6 +296,10 @@ where
                 (a.addr().to_string(), max)
             })
             .collect();
+
+        // 为每个元素预先生成随机值，确保比较函数的一致性
+        let mut random_values: HashMap<String, u16> = HashMap::new();
+
         self.sort_by(|a, b| {
             let da = distances[a.addr()];
             let db = distances[b.addr()];
@@ -310,8 +310,20 @@ where
                     let cb = b.count(&top);
                     cb.cmp(&ca)
                 })
-                // 距离相同时，随机排序。避免可能的热点
-                .then_with(|| rand::random::<u16>().cmp(&(u16::MAX / 2)))
+                // 距离相同时，使用预先生成的随机值排序。避免可能的热点
+                .then_with(|| {
+                    // 获取或生成a的随机值
+                    let ra = *random_values
+                        .entry(a.addr().to_string())
+                        .or_insert(rand::random::<u16>());
+
+                    // 获取或生成b的随机值
+                    let rb = *random_values
+                        .entry(b.addr().to_string())
+                        .or_insert(rand::random::<u16>());
+
+                    ra.cmp(&rb)
+                })
         });
 
         let mut len_local = 0;
