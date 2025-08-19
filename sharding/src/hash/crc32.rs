@@ -12,7 +12,7 @@ use std::fmt::Display;
 ///   ================  基于i32版本  ================
 ///     备注：不取名crc32-abs，是为了区分i32/i63的base，及为后续扩展做准备 fishermen
 ///   7 crc32abs: 转为i32，然后进行abs操作
-///   8 后续可能会有crc32abs-xxx，此处先预留语义；
+///   8 后续可能会有crc32abs-delimiter，基于point/pound/underscore之前的部分key，先转为i32，然后进行abs操作；
 ///
 
 pub(super) const CRC32TAB: [i64; 256] = [
@@ -365,7 +365,7 @@ impl Hash for Crc32Abs {
     }
 }
 
-/// --- Crc32AbsDelimiter impl moved to file end ---
+/// --- Crc32AbsDelimiter impl: crc32abs-point/underscore-pound ---
 impl Crc32AbsDelimiter {
     pub fn from(alg: &str) -> Self {
         let alg_parts: Vec<&str> = alg.split(super::HASHER_NAME_DELIMITER).collect();
