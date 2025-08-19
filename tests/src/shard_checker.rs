@@ -1,5 +1,3 @@
-// 依赖: 在Cargo.toml中添加 crc32fast = "1"
-// use: cargo add crc32fast
 use core::panic;
 use std::{
     fs::File,
@@ -255,18 +253,6 @@ fn check_readed_redis_hasher() {
     use std::io::{BufRead, BufReader};
 
     let dir = "sharding_datas/readed-redis-port-key";
-    // let dir = "sharding_datas/readed-redis-port-key-1";
-    // let out_path = "tesharding_datas/port_key_shard_check.txt";
-    // let mut out = File::create(out_path).expect("create shard check file failed");
-
-    // 写文件头
-    // writeln!(out, "# Breeze端口key分布shard校验文件").unwrap();
-    // writeln!(out, "hash=crc32abs-point").unwrap();
-    // writeln!(out, "distribution=modula").unwrap();
-    // writeln!(out, "shard_count=256").unwrap();
-
-    // let mut shards: Vec<Vec<String>> = vec![Vec::new(); 256];
-
     let files: Vec<_> = fs::read_dir(dir)
         .expect("read_dir failed")
         .filter_map(|e| e.ok())
@@ -304,15 +290,6 @@ fn check_readed_redis_hasher() {
         }
         println!("已处理端口文件: {}", path.display());
     }
-
-    // 按shard_checker格式输出
-    // for (idx, keys) in shards.iter().enumerate() {
-    //     writeln!(out, "\nshard_idx={}", idx).unwrap();
-    //     for key in keys {
-    //         writeln!(out, "{}", key).unwrap();
-    //     }
-    // }
-    // println!("已导出shard校验文件: {}", out_path);
 }
 
 #[test]
