@@ -82,6 +82,18 @@ pub struct Crc32SmartNum {}
 #[derive(Default, Clone, Debug)]
 pub struct Crc32MixNum {}
 
+/// 遵从i32进行crc32计算，并进行abs操作;
+#[derive(Debug, Clone, Default)]
+pub struct Crc32Abs;
+
+/// 遵从i32进行crc32计算，并进行abs操作，且只计算startpos之后、delimiter之前的字符，格式：$start+$hashkey+$delimiter$
+#[derive(Default, Clone, Debug)]
+pub struct Crc32AbsDelimiter {
+    start_pos: usize,
+    delimiter: u8,
+    name: DebugName,
+}
+
 // 对全key做crc32
 impl super::Hash for Crc32 {
     #[inline]
@@ -331,10 +343,6 @@ impl super::Hash for Crc32MixNum {
     }
 }
 
-/// 遵从i32进行crc32计算，并进行abs操作;
-#[derive(Debug, Clone, Default)]
-pub struct Crc32Abs;
-
 impl Hash for Crc32Abs {
     fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
         let mut crc: i64 = CRC_SEED;
@@ -354,5 +362,73 @@ impl Hash for Crc32Abs {
             crc = crc.abs();
         }
         crc as i64
+    }
+}
+
+/// --- Crc32AbsDelimiter impl moved to file end ---
+impl Crc32AbsDelimiter {
+    pub fn from(alg: &str) -> Self {
+        let alg_parts: Vec<&str> = alg.split(super::HASHER_NAME_DELIMITER).collect();
+
+        debug_assert!(alg_parts.len() >= 2);
+        debug_assert_eq!(alg_parts[0], "crc32abs");
+
+        let delimiter = super::key_delimiter_name_2u8(alg, alg_parts[1]);
+
+        if alg_parts.len() == 2 {
+            return Self {
+                start_pos: 0,
+                delimiter,
+                name: alg.into(),
+            };
+        }
+
+        debug_assert!(alg_parts.len() == 3);
+        if let Ok(prefix_len) = alg_parts[2].parse::<usize>() {
+            return Self {
+                start_pos: prefix_len,
+                delimiter,
+                name: alg.into(),
+            };
+        } else {
+            log::debug!("found unknown hash/{}, ignore prefix instead", alg);
+            return Self {
+                start_pos: 0,
+                delimiter,
+                name: alg.into(),
+            };
+        }
+    }
+}
+
+impl super::Hash for Crc32AbsDelimiter {
+    fn hash<S: super::HashKey>(&self, key: &S) -> i64 {
+        let mut crc: i64 = CRC_SEED;
+        debug_assert!(self.start_pos < key.len());
+
+        let check_delimiter = self.delimiter != super::KEY_DELIMITER_NONE;
+        for i in self.start_pos..key.len() {
+            let c = key.at(i);
+            if check_delimiter && (c == self.delimiter) {
+                break;
+            }
+            crc = ((crc >> 8) & 0x00FFFFFF) ^ CRC32TAB[((crc ^ (c as i64)) & 0xff) as usize];
+        }
+
+        crc ^= CRC_SEED;
+        crc &= CRC_SEED;
+
+        let mut crc = crc as i32;
+        if crc <= 0 {
+            log::debug!("{:?} - negative hash/{} for key/{:?}", self.name, crc, key);
+            crc = crc.abs();
+        }
+        crc as i64
+    }
+}
+
+impl Display for Crc32AbsDelimiter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.name)
     }
 }
