@@ -115,7 +115,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             }
             self.ctx.bulk = self.data.num_of_bulks(&mut self.oft)? as u16;
             self.ctx.first = true;
-            // assert_ne!(self.bulk(), 0, "packet:{}", self);
+            assert_ne!(self.bulk(), 0, "packet:{}", self);
         }
         Ok(())
     }
