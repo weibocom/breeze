@@ -115,7 +115,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             }
             self.ctx.bulk = self.data.num_of_bulks(&mut self.oft)? as u16;
             self.ctx.first = true;
-            assert_ne!(self.bulk(), 0, "packet:{}", self);
+            // assert_ne!(self.bulk(), 0, "packet:{}", self);
         }
         Ok(())
     }
@@ -421,11 +421,19 @@ impl Packet {
     pub fn num_of_bulks(&self, oft: &mut usize) -> crate::Result<usize> {
         debug_assert!(*oft < self.len() && self[*oft] == b'*');
         let mut n = 0;
-        for i in *oft + 1..self.len() - 1 {
+
+        // 处理负数的情况, *-1\r\n 代表0个bulk
+        let negative = self[*oft + 1] == b'-';
+        let start = if negative { *oft + 2 } else { *oft + 1 };
+        for i in start..self.len() - 1 {
             if self[i] == b'\r' {
                 // 下一个字符必须是'\n'
                 debug_assert!(i + 1 >= self.len() || self[i + 1] == b'\n');
                 *oft = i + 2;
+                if negative {
+                    debug_assert!(n == 1, "invalid num_of_bulks:{:?}", self);
+                    return Ok(0);
+                }
                 return Ok(n);
             }
             debug_assert!(self[i].is_ascii_digit(), "num:{} => {:?}", i, self);
