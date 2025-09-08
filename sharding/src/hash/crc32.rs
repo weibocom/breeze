@@ -365,7 +365,7 @@ impl Hash for Crc32Abs {
     }
 }
 
-/// --- Crc32AbsDelimiter impl: crc32abs-point/underscore-pound ---
+/// --- Crc32AbsDelimiter impl: crc32abs-point/underscore/pound ---
 impl Crc32AbsDelimiter {
     pub fn from(alg: &str) -> Self {
         let alg_parts: Vec<&str> = alg.split(super::HASHER_NAME_DELIMITER).collect();
