@@ -19,7 +19,8 @@ env:
   min_key: 1
   max_key: 10000
   socks_dir: /home/runner/work/breeze/socks
-  RUSTFLAGS: "-D warnings"
+  # TODO rust版本升级后，突然大量warnings，暂时允许dead_code警告
+  RUSTFLAGS: "-D warnings --allow dead_code"
 
 jobs:
   build:

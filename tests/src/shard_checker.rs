@@ -36,6 +36,16 @@ fn check_shard_data() {
     shard_checker(root_dir, data_file);
 }
 
+// Breeze端口号到分片idx的映射（idx=0~7:57439~57446，idx=8~255:58544~58791）
+fn port_to_idx(port: u16) -> Option<usize> {
+    if (57439..=57446).contains(&port) {
+        Some((port - 57439) as usize)
+    } else if (58544..=58791).contains(&port) {
+        Some((port - 58544 + 8) as usize)
+    } else {
+        None
+    }
+}
 #[test]
 fn build_shard_data() {
     let shard_conf = ShardConf {
@@ -234,4 +244,63 @@ fn write_shard_data(shard_conf: &ShardConf, src: &str, dest: &str) {
         }
         writer.flush().unwrap();
     }
+}
+
+/// 遍历所有端口key文件，导出key,port到csv，便于后续hash分布校验
+#[test]
+fn check_readed_redis_hasher() {
+    use std::fs::{self, File};
+    use std::io::{BufRead, BufReader};
+
+    let dir = "sharding_datas/readed-redis-port-key";
+    let files: Vec<_> = fs::read_dir(dir)
+        .expect("read_dir failed")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_file())
+        .collect();
+
+    let hasher = Hasher::from("crc32abs-point");
+    let mock_servers = mock_servers(256);
+    let dist = Distribute::from("modula", &mock_servers);
+
+    for entry in files {
+        let path = entry.path();
+        let fname = path.file_name().unwrap().to_string_lossy();
+        if !fname.ends_with(".txt") { continue; }
+        let port: u16 = match fname.trim_end_matches(".txt").parse() {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        let idx = match port_to_idx(port) {
+            Some(idx) => idx,
+            None => panic!("端口{}不在合法分片区间", port),
+        };
+        let file = File::open(&path).expect("open port file failed");
+        let reader = BufReader::new(file);
+        for line in reader.lines() {
+            let key = line.unwrap();
+            let key = key.trim();
+            if key.is_empty() { continue; }
+            // shards[idx].push(key.to_string());
+            let hash = hasher.hash(&key.as_bytes());
+            let shard_idx = dist.index(hash);
+            if shard_idx != idx {
+                println!("key={} hash={} shard_idx={} file={} idx={}", key, hash, shard_idx, fname, idx);
+            }
+        }
+        println!("已处理端口文件: {}", path.display());
+    }
+}
+
+#[test]
+fn check_crc32abs_hasher() {
+    let hasher = Hasher::from("crc32abs-point");
+    let mock_servers = mock_servers(256);
+    let dist = Distribute::from("modula", &mock_servers);
+
+    let key = "6972284375.cr2";
+    let hash = hasher.hash(&key.as_bytes());
+    let idx = dist.index(hash);
+    println!("key: {}, hash: {}, idx: {}", key, hash, idx);
+
 }
