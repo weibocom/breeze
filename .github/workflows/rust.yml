@@ -39,7 +39,8 @@ jobs:
           toolchain: stable
           override: true
       - name: Build
-        run: cargo build
+        # TODO 临时加上--all --allow dead_code，后续需要去掉，只保留为：run: cargo build fishermen
+        run: cargo build --all --allow dead_code
       - name: Check Vintage
         run: |
           docker ps -a
