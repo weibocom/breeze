@@ -346,7 +346,7 @@ impl Ipv4Vec {
         }
         self.len += 1;
     }
-    pub fn iter(&self) -> Ipv4VecIter {
+    pub fn iter(&self) -> Ipv4VecIter<'_> {
         let iter = if self.len() <= self.cache.len() {
             self.cache[..self.len as usize].iter()
         } else {

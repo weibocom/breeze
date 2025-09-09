@@ -83,6 +83,7 @@ pub enum Hasher {
     LBCrc32localDelimiter(LBCrc32localDelimiter), // long bytes crc32local for hash like: 123.a, 124_a, 123#a
     Rawcrc32local(Rawcrc32local),                 // raw or crc32local
     Crc32Abs(Crc32Abs), // crc32abs: 基于i32转换，然后直接取abs；其他走i64提升为正数
+    Crc32AbsDelimiter(Crc32AbsDelimiter), // crc32abs: 基于i32转换，然后直接取abs，同时支持分隔符，格式：$start+$hashkey+$delimiter$
     Crc64(Crc64),       // Crc64 算法，对整个key做crc64计算
     Fnv1aF64(Fnv1aF64),
     Random(RandomHash), // random hash
@@ -158,6 +159,7 @@ impl Hasher {
                 CRC32_EXT_MIXNUM => Self::Crc32MixNum(Default::default()),
                 _ => Self::Crc32Delimiter(Crc32Delimiter::from(alg_lower.as_str())),
             },
+            "crc32abs" => Self::Crc32AbsDelimiter(Crc32AbsDelimiter::from(alg_lower.as_str())),
             "crc32local" => match alg_parts[1] {
                 CRC32_EXT_SMARTNUM => Self::Crc32localSmartNum(Default::default()),
                 _ => Self::Crc32localDelimiter(Crc32localDelimiter::from(alg_lower.as_str())),
@@ -169,6 +171,7 @@ impl Hasher {
             }
         }
     }
+
     #[inline]
     pub fn crc32_short() -> Self {
         Self::Crc32Short(Default::default())
@@ -182,7 +185,7 @@ fn key_delimiter_name_2u8(_alg: &str, delimiter_name: &str) -> u8 {
         KEY_DELIMITER_UNDERSCORE => '_',
         KEY_DELIMITER_POUND => '#',
         _ => {
-            log::debug!("found unknown hash alg: {}, use crc32 instead", _alg);
+            log::warn!("found unknown hash alg: {}, use crc32 instead", _alg);
             KEY_DELIMITER_NONE as char
         }
     };
