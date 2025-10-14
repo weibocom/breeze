@@ -2,7 +2,7 @@ use super::{
     command::{CommandHasher, CommandProperties, CommandType},
     error::RedisError,
 };
-use crate::{error::Error, redis::command, Flag, Result, StreamContext};
+use crate::{Flag, Result, StreamContext, error::Error, redis::command};
 use ds::RingSlice;
 use sharding::hash::Hash;
 
@@ -39,7 +39,8 @@ impl From<RequestContext> for StreamContext {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ResponseContext {
     pub oft: usize,
-    pub bulk: usize,
+    pub bulk: u32,
+    pub status: u32,
 }
 #[inline]
 pub fn transmute(ctx: &mut StreamContext) -> &mut ResponseContext {
@@ -607,7 +608,7 @@ impl Packet {
         self.skip_multibulks_inner(&mut ctx.oft, &mut ctx.bulk)
             .map_err(|e| {
                 if let Error::ProtocolIncomplete(_) = e {
-                    Error::ProtocolIncomplete(ctx.bulk * 64)
+                    Error::ProtocolIncomplete(ctx.bulk as usize * 64)
                 } else {
                     e
                 }
@@ -641,7 +642,7 @@ impl Packet {
     // }
     //协议完整才跳过，否则不做改动
     #[inline]
-    pub fn full_skip_multibulks(&self, oft: &mut usize, bulks: &mut usize) -> Result<()> {
+    pub fn full_skip_multibulks(&self, oft: &mut usize, bulks: &mut u32) -> Result<()> {
         let (mut oft_tmp, mut bulks_tmp) = (*oft, *bulks);
         self.skip_multibulks_inner(&mut oft_tmp, &mut bulks_tmp)?;
         *oft = oft_tmp;
@@ -649,12 +650,12 @@ impl Packet {
         Ok(())
     }
     #[inline]
-    pub fn skip_multibulks_inner(&self, oft: &mut usize, bulks: &mut usize) -> Result<()> {
+    pub fn skip_multibulks_inner(&self, oft: &mut usize, bulks: &mut u32) -> Result<()> {
         while *bulks > 0 {
             self.check_onetoken(*oft)?;
             // 下面每种情况都确保了不会越界
             match self.at(*oft) {
-                b'*' => *bulks = *bulks + self.num_of_bulks(oft)?,
+                b'*' => *bulks = *bulks + self.num_of_bulks(oft)? as u32,
                 // 能完整解析才跳过当前字符串：num个字节 + "\r\n" 2个字节
                 b'$' => self.skip_string_inner(oft).map(|_| {})?,
                 b'+' | b':' => self.line(oft)?,

@@ -5,9 +5,9 @@ use sharding::hash::Hash;
 use std::fmt::{self, Debug, Display, Formatter};
 
 use crate::{
+    Flag, Packet, Result,
     redis::{command::CommandHasher, packet::CRLF_LEN},
     vector::{command, error::KvectorError},
-    Flag, Packet, Result,
 };
 
 /// key 最大长度限制为200
@@ -189,7 +189,7 @@ impl<'a, S: crate::Stream> RequestPacket<'a, S> {
             log::warn!("not enough bulks to skip req:{}", self);
             return Err(KvectorError::ReqInvalidBulkNum.into());
         }
-        let mut tmp_count = count as usize;
+        let mut tmp_count = count as u32;
         self.data
             .full_skip_multibulks(&mut self.oft, &mut tmp_count)?;
         assert_eq!(tmp_count, 0);

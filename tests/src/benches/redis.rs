@@ -1,8 +1,8 @@
-use criterion::{black_box, Criterion};
+use criterion::{Criterion, black_box};
 use ds::{BufWriter, RingSlice};
 use protocol::{
-    redis::{Packet, Redis},
     BufRead,
+    redis::{Packet, Redis},
 };
 pub(super) fn parse(c: &mut Criterion) {
     let data = b"*2\r\n$5\r\nbfset\r\n$19\r\n9972602101111556910\r\n*2\r\n$5\r\nbfset\r\n$19\r\n9972601925349247790\r\n*2\r\n$5\r\nbfset\r\n$19\r\n9972602670110837550\r\n*2\r\n$5\r\nbfset\r\n$19\r\n9972603151400930094\r\n*2\r\n$5\r\nbfset\r\n$19\r\n9972603030906964782\r\n*2\r\n$5\r\nbfset\r\n$19\r\n9972602882608958254\r\n*2\r\n$5\r\nbfset\r\n$19\r\n9972602137802279726\r\n*2\r\n$5\r\nbfset\r\n$19\r\n9972601835448535854\r\n*2\r\n$5\r\nbfset\r\n$19\r\n9972602680699357998\r\n*2\r\n$5\r\nbfset\r\n$19\r\n9972601700260875054\r\n*2\r\n$5\r\nbfset\r\n$19\r\n9972602577506896686\r\n*2\r\n$5\r\nbfset\r\n$19\r\n9972601852848605998\r\n";
@@ -31,7 +31,11 @@ pub(super) fn parse(c: &mut Criterion) {
     //         });
     //     });
     // });
-    let mut ctx = protocol::redis::ResponseContext { oft: 0, bulk: 0 };
+    let mut ctx = protocol::redis::ResponseContext {
+        oft: 0,
+        bulk: 0,
+        status: 0,
+    };
     group.bench_function("skip_multibulks", |b| {
         b.iter(|| {
             black_box({
