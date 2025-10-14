@@ -2,7 +2,11 @@ use super::{
     command::{CommandHasher, CommandProperties, CommandType},
     error::RedisError,
 };
-use crate::{Flag, Result, StreamContext, error::Error, redis::command};
+use crate::{
+    Flag, Result, StreamContext,
+    error::Error,
+    redis::{HandShakeStatus, command},
+};
 use ds::RingSlice;
 use sharding::hash::Hash;
 
@@ -40,7 +44,7 @@ impl From<RequestContext> for StreamContext {
 pub struct ResponseContext {
     pub oft: usize,
     pub bulk: u32,
-    pub status: u32,
+    pub status: HandShakeStatus,
 }
 #[inline]
 pub fn transmute(ctx: &mut StreamContext) -> &mut ResponseContext {

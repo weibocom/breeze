@@ -1,8 +1,8 @@
-use ds::time::{timeout, Duration};
+use ds::time::{Duration, timeout};
 use rt::Cancel;
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{ready, Poll};
+use std::task::{Poll, ready};
 
 use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
@@ -10,8 +10,8 @@ use tokio::net::TcpStream;
 use protocol::{Error, HandShake, Protocol, Request, ResOption, Result, Stream};
 
 use crate::handler::Handler;
-use ds::chan::mpsc::Receiver;
 use ds::Switcher;
+use ds::chan::mpsc::Receiver;
 use metrics::Path;
 
 use rt::{Entry, Timeout};
@@ -77,7 +77,7 @@ impl<P, Req> BackendChecker<P, Req> {
             let mut stream = rt::Stream::from(stream.expect("not expected"));
             let rx = &mut self.rx;
 
-            if self.parser.config().need_auth {
+            if self.parser.config().need_auth && self.option.token.len() > 0 {
                 let auth = Auth {
                     option: &mut self.option,
                     s: &mut stream,

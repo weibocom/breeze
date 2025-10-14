@@ -17,7 +17,7 @@ use sharding::hash::Hash;
 pub struct Redis;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
+#[repr(u32)]
 pub enum HandShakeStatus {
     Init = 0,
     Sent = 1,
@@ -106,13 +106,7 @@ impl Redis {
 
 impl Protocol for Redis {
     fn handshake(&self, stream: &mut impl Stream, option: &mut ResOption) -> Result<HandShake> {
-        let ctx = transmute(stream.context());
-        let status = match ctx.status {
-            0 => HandShakeStatus::Init,
-            1 => HandShakeStatus::Sent,
-            2 => HandShakeStatus::Success,
-            _ => HandShakeStatus::Init,
-        };
+        let status = transmute(stream.context()).status;
 
         match status {
             HandShakeStatus::Init => {
@@ -126,22 +120,20 @@ impl Protocol for Redis {
                 auth_cmd.extend_from_slice(b"\r\n");
 
                 stream.write_all(&auth_cmd)?;
-                ctx.status = HandShakeStatus::Sent as u32;
+                transmute(stream.context()).status = HandShakeStatus::Sent;
                 Ok(HandShake::Continue)
             }
+
             HandShakeStatus::Sent => {
-                let data: Packet = stream.slice().into();
+                let data = stream.slice();
                 if let Some(idx) = data.find_lf_cr(0) {
                     // response should be +OK\r\n
-                    if &data[..idx] == b"+OK" {
+                    if data.start_with(0, b"+OK\r\n") {
                         stream.ignore(idx + 2);
-                        ctx.status = HandShakeStatus::Success as u32;
+                        transmute(stream.context()).status = HandShakeStatus::Success;
                         return Ok(HandShake::Success);
                     }
-                    log::warn!(
-                        "redis auth failed response:{:?}",
-                        data.sub_slice(0, idx + 2)
-                    );
+                    log::warn!("redis auth failed response:{:?}", data);
                     Err(Error::AuthFailed)
                 } else {
                     stream.reserve(8);

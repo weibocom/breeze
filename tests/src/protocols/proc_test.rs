@@ -2,6 +2,7 @@ use bytes::BufMut;
 use ds::RingSlice;
 use protocol::Bit;
 use protocol::Packet;
+use protocol::redis::HandShakeStatus::Init;
 use protocol::redis::ResponseContext;
 
 #[test]
@@ -11,7 +12,7 @@ fn parse_rsp() {
     let mut ctx = ResponseContext {
         oft: 0,
         bulk: 0,
-        status: 0,
+        status: Init,
     };
     assert!(data.skip_multibulks_with_ctx(&mut ctx).is_ok());
     assert_eq!(ctx.oft, data.len());
@@ -31,7 +32,7 @@ fn parse_command_rsp() {
     let mut ctx = ResponseContext {
         oft: 0,
         bulk: 0,
-        status: 0,
+        status: Init,
     };
     assert!(rsp_data.skip_multibulks_with_ctx(&mut ctx).is_ok());
     assert_eq!(ctx.oft, rsp_data.len());
@@ -53,7 +54,7 @@ fn parse_command_long_array_rsp() {
     let mut ctx = ResponseContext {
         oft: 0,
         bulk: 0,
-        status: 0,
+        status: Init,
     };
 
     let mut v: Vec<u8> = Vec::with_capacity(65000);
@@ -126,7 +127,7 @@ fn parse_command_deep_array_rsp() {
     let mut ctx = ResponseContext {
         oft: 0,
         bulk: 0,
-        status: 0,
+        status: Init,
     };
 
     let mut v: Vec<u8> = Vec::with_capacity(1024);
@@ -205,7 +206,7 @@ fn response_skip_multibulks(data: &[u8]) {
     let mut ctx = ResponseContext {
         oft: 0,
         bulk: 0,
-        status: 0,
+        status: Init,
     };
     for i in 1..(data.len() - 1) {
         let data = data[..i].to_vec();

@@ -34,7 +34,7 @@ pub(super) fn parse(c: &mut Criterion) {
     let mut ctx = protocol::redis::ResponseContext {
         oft: 0,
         bulk: 0,
-        status: 0,
+        status: protocol::redis::HandShakeStatus::Init,
     };
     group.bench_function("skip_multibulks", |b| {
         b.iter(|| {
