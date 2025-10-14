@@ -8,7 +8,7 @@ mod reqpacket;
 mod rsppacket;
 
 mod mc2mysql;
-pub use mc2mysql::{escape_mysql_and_push, MysqlBuilder, Strategy, VectorSqlBuilder};
+pub use mc2mysql::{MysqlBuilder, Strategy, VectorSqlBuilder, escape_mysql_and_push};
 use std::ops::Deref;
 
 use self::common::proto::Text;
@@ -23,12 +23,12 @@ use self::rsppacket::ResponsePacket;
 
 use super::Flag;
 use super::Protocol;
-use crate::kv::client::Client;
-use crate::kv::error::Error;
 use crate::HandShake;
 use crate::HashedCommand;
 use crate::RequestProcessor;
 use crate::Stream;
+use crate::kv::client::Client;
+use crate::kv::error::Error;
 use crate::{Command, Operation};
 use ds::RingSlice;
 
@@ -37,9 +37,9 @@ use sharding::hash::Hash;
 pub mod prelude {
 
     #[doc(inline)]
-    pub use crate::kv::common::row::convert::FromRow;
-    #[doc(inline)]
     pub use crate::kv::common::row::ColumnIndex;
+    #[doc(inline)]
+    pub use crate::kv::common::row::convert::FromRow;
     #[doc(inline)]
     pub use crate::kv::common::value::convert::{ConvIr, FromValue, ToValue};
 

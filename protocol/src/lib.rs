@@ -11,6 +11,7 @@ pub use redis::RedisFlager;
 pub use redis::packet::Packet;
 pub mod req;
 //pub mod resp;
+#[allow(dead_code)]
 pub mod kv;
 pub mod metrics;
 pub mod msgque;
