@@ -1,11 +1,8 @@
-//use ds::time::Duration;
-
-use std::{collections::HashSet, fmt::Debug};
-
+use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
-//use sharding::distribution::{DIST_ABS_MODULA, DIST_MODULA};
+use std::{collections::HashSet, fmt::Debug, fs};
 
-use crate::{Timeout, TO_REDIS_M, TO_REDIS_S};
+use crate::{TO_REDIS_M, TO_REDIS_S, Timeout};
 
 // range/modrange 对应的distribution配置项如果有此后缀，不进行后端数量的校验
 const NO_CHECK_SUFFIX: &str = "-nocheck";
@@ -42,6 +39,8 @@ pub struct Basic {
     // master是否参与读
     #[serde(default)]
     pub(crate) master_read: bool,
+    #[serde(default)]
+    pub(crate) password: String,
 }
 
 impl RedisNamespace {
@@ -76,6 +75,15 @@ impl RedisNamespace {
         if !ns.validate_and_correct() {
             log::error!("malformed names or shards {}: {}", ns.backends.len(), cfg);
             return None;
+        }
+
+        // 解密密码
+        match ns.decrypt_password() {
+            Ok(password) => ns.basic.password = password,
+            Err(e) => {
+                log::warn!("failed to decrypt password, e:{}", e);
+                return None;
+            }
         }
 
         log::debug!("parsed redis config:{}/{}", ns.basic.distribution, cfg);
@@ -138,5 +146,14 @@ impl RedisNamespace {
         }
 
         true
+    }
+
+    #[inline]
+    fn decrypt_password(&self) -> Result<String, Box<dyn std::error::Error>> {
+        let key_pem = fs::read_to_string(&context::get().key_path)?;
+        let encrypted_data = general_purpose::STANDARD.decode(self.basic.password.as_bytes())?;
+        let decrypted_data = ds::decrypt::decrypt_password(&key_pem, &encrypted_data)?;
+        let decrypted_string = String::from_utf8(decrypted_data)?;
+        Ok(decrypted_string)
     }
 }
