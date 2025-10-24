@@ -78,11 +78,13 @@ impl RedisNamespace {
         }
 
         // 解密密码
-        match ns.decrypt_password() {
-            Ok(password) => ns.basic.password = password,
-            Err(e) => {
-                log::warn!("failed to decrypt password, e:{}", e);
-                return None;
+        if !ns.basic.password.is_empty() {
+            match ns.decrypt_password() {
+                Ok(password) => ns.basic.password = password,
+                Err(e) => {
+                    log::warn!("failed to decrypt password, e:{}", e);
+                    return None;
+                }
             }
         }
 

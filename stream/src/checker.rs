@@ -119,7 +119,7 @@ impl<P, Req> BackendChecker<P, Req> {
                     timeout += 1;
                 }
                 Error::ChanReadClosed => {
-                    debug_assert!(!self.finish.get(), "channel closed but not finish");
+                    debug_assert!(self.finish.get(), "channel closed but not finish");
                 }
                 Error::TxBufFull => {
                     let mut buf_full = path_addr.num("buf_full");
