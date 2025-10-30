@@ -1,12 +1,16 @@
 use crate::ci::env::*;
 use crate::redis_helper::*;
+use byme::LikeByMe;
 #[allow(unused)]
 use function_name::named;
 use redis::Value;
+mod aggregation;
+mod byme;
+mod assist;
 
-const RESTYPE: &str = "vector";
-const CMD_VGET: &str = "vget";
-const CMD_VRANGE: &str = "vrange";
+pub(crate) const RESTYPE: &str = "vector";
+pub(crate) const CMD_VGET: &str = "vget";
+pub(crate) const CMD_VRANGE: &str = "vrange";
 
 #[test]
 #[named]
@@ -123,7 +127,7 @@ fn vrange_or_vget_1_with_1rows(cmd: &str) {
         Ok(Value::Bulk(vec![
             Value::Bulk(vec![
                 Value::Status("uid".to_string()),
-                Value::Status("object_type".to_string())
+                Value::Status("object_type".to_string()),
             ]),
             Value::Bulk(vec![
                 Value::Int(like_by_me.uid),
@@ -173,7 +177,7 @@ fn vrange_or_vget_2_with_2rows(cmd: &str) {
         Ok(Value::Bulk(vec![
             Value::Bulk(vec![
                 Value::Status("uid".to_string()),
-                Value::Status("object_type".to_string())
+                Value::Status("object_type".to_string()),
             ]),
             Value::Bulk(vec![
                 Value::Int(like_by_me1.uid),
@@ -527,13 +531,6 @@ fn vcard() {
         .query(&mut con);
     println!("++ rsp:{:?}", rsp);
     assert_eq!(rsp, Ok(3));
-}
-
-struct LikeByMe {
-    uid: i64,
-    like_id: i64,
-    object_id: i64,
-    object_type: i64,
 }
 
 #[test]

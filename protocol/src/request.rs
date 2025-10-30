@@ -71,12 +71,16 @@ impl crate::Request for Request {
     fn set_max_tries(&mut self, max_tries: u8) {
         self.ctx().set_max_tries(max_tries);
     }
-    #[inline]
-    fn set_fitst_try(&mut self) {
-        self.ctx().set_fitst_try();
+    // #[inline]
+    // fn set_fitst_try(&mut self) {
+    //     self.ctx().reset_tries();
+    // }
+    fn set_next_round(&mut self, next_round: bool) {
+        self.ctx().set_next_round(next_round);
     }
-    fn set_last(&mut self, last: bool) {
-        self.ctx().set_last(last);
+
+    fn get_next_round(&mut self) -> bool {
+        self.ctx().get_next_round()
     }
 }
 impl Request {

@@ -1,5 +1,5 @@
 pub mod attachment;
-mod command;
+pub mod command;
 pub(crate) mod error;
 pub mod flager;
 pub mod mysql;
@@ -9,18 +9,18 @@ pub mod redis;
 mod reqpacket;
 mod rsppacket;
 
-use std::fmt::Write;
-use std::mem;
+use std::fmt::{Display, Write};
 
 use crate::{
-    Attachment, Command, Commander, Error, HashedCommand, Metric, MetricItem, Protocol,
+    Attachment, Command, Commander, Error, HashedCommand, Metric, MetricItem, Operation, Protocol,
     RequestProcessor, Result, Stream, Writer,
 };
+use attachment::{AttachType, Route};
 use chrono::NaiveDate;
 use ds::RingSlice;
 use sharding::hash::Hash;
 
-use self::attachment::VecAttach;
+use self::attachment::VectorAttach;
 use self::packet::RedisPack;
 use self::reqpacket::RequestPacket;
 use self::rsppacket::ResponsePacket;
@@ -123,29 +123,41 @@ impl Protocol for Vector {
                 w.write("\r\n".as_bytes())?;
             } else {
                 if ctx.attachment().is_some() {
-                    // 有attachment: 组装rsp: header(vec[0]) + *body_tokens + vec[1..]
-                    let attach = VecAttach::attach(ctx.attachment().unwrap());
-                    if attach.body_token_count() > 0 {
-                        w.write(attach.header())?;
-                        w.write(format!("*{}\r\n", attach.body_token_count()).as_bytes())?;
-                        for b in attach.body() {
-                            w.write(b.as_slice())?;
+                    let vec_attach =
+                        VectorAttach::attach(ctx.attachment().expect("vector attache"));
+                    match vec_attach.attch_type() {
+                        AttachType::Retrieve => {
+                            // 有attachment: 组装rsp: header(vec[0]) + *body_tokens + vec[1..]
+                            let attach = vec_attach.retrieve_attach();
+                            if attach.body_token_count() > 0 {
+                                w.write(attach.header())?;
+                                w.write(format!("*{}\r\n", attach.body_token_count()).as_bytes())?;
+                                for b in attach.body() {
+                                    w.write(b.as_slice())?;
+                                }
+                            } else {
+                                // 返回空
+                                w.write("$-1\r\n".as_bytes())?;
+                            }
                         }
-                    } else {
-                        // 返回空
-                        w.write("$-1\r\n".as_bytes())?;
+                        AttachType::Store => {
+                            let attach = vec_attach.store_attach();
+                            w.write(format!(":{}\r\n", attach.affected_rows).as_bytes())?;
+                        }
+                        _ => {
+                            panic!("bad attach type");
+                        }
                     }
                 } else {
                     // 无attachment: response已封装为redis协议。正常响应有三种：
                     // 1. 只返回影响的行数
                     // 2. 一行或多行数据
                     // 3. 结果为空
-                    if response.header.rows > 0 {
-                        w.write(response.header.header.as_ref())?;
-                        w.write(
-                            format!("*{}\r\n", response.header.rows * response.header.columns)
-                                .as_bytes(),
-                        )?;
+                    if let Some(ref header) = response.header {
+                        if header.rows > 0 {
+                            w.write(header.header.as_ref())?;
+                            w.write(format!("*{}\r\n", header.rows * header.columns).as_bytes())?;
+                        }
                     }
                     w.write_slice(response, 0)?; // value
                 }
@@ -177,38 +189,65 @@ impl Protocol for Vector {
 
     // 将中间响应放到attachment中，方便后续继续查询
     // 先收集si信息，再收集body
-    // 返回值：是否需要继续查询
+    // 返回值：是否继续下一轮
     #[inline]
     fn update_attachment(&self, attachment: &mut Attachment, response: &mut Command) -> bool {
         assert!(response.ok());
-        let attach = VecAttach::attach_mut(attachment);
+        let vec_attach = VectorAttach::attach_mut(attachment);
         //收到响应就算ok，响应有问题也不会发送到topo了
-        attach.rsp_ok = true;
+        vec_attach.rsp_ok = true;
 
-        if attach.is_empty() {
-            // TODO 先打通，此处的内存操作需要考虑优化 fishermen
-            let mut header_data = Vec::new();
-            let header = &mut response.header;
-            mem::swap(&mut header_data, &mut header.header);
-            attach.attach_header(header_data);
-        }
-
-        // TODO 先打通，此处的内存操作需要考虑优化 fishermen
-        match attach.has_si() {
-            true => {
-                if response.header.rows > 0 {
-                    let header = &response.header;
-                    attach.attach_body(response.data().0.to_vec(), header.rows, header.columns);
+        match vec_attach.attch_type() {
+            AttachType::Retrieve => {
+                let attach = vec_attach.retrieve_attach_mut();
+                // 如果header为none，说明当前查询结果为空
+                // 如果有si，则看是否还有后续请求
+                // 如果没有si，直接返回false
+                if response.header.is_none() {
+                    if attach.has_si() {
+                        return attach.left_count != 0;
+                    }
+                    return false;
                 }
-                attach.left_count == 0
+
+                assert!(response.header.is_some(), "rsp:{}", response);
+                let body_data = response.data().0.to_vec();
+                let header = response.header.as_mut().expect("rsp header");
+
+                if attach.is_empty() {
+                    // TODO 简化swap操作，注意功能验证 fishermen
+                    // let mut header_data = Vec::new();
+                    // let header = &mut response.header;
+                    // mem::swap(&mut header_data, &mut header.header);
+                    attach.swap_header_data(&mut header.header);
+                }
+
+                // TODO 先打通，此处的内存操作需要考虑优化 fishermen
+                match attach.has_si() {
+                    true => {
+                        if header.rows > 0 {
+                            // let header = &response.header;
+                            attach.attach_body(body_data, header.rows, header.columns);
+                        }
+                        attach.left_count != 0
+                    }
+                    // 按si解析响应: 未成功获取有效si信息或者解析si失败，并终止后续请求
+                    false => response.count() != 0 && attach.attach_si(response),
+                }
             }
-            // 按si解析响应: 未成功获取有效si信息或者解析si失败，并终止后续请求
-            false => response.count() == 0 || !attach.attach_si(response),
+            AttachType::Store => {
+                let store_attach = vec_attach.store_attach_mut();
+                store_attach.incr_affected_rows(response.count() as u16);
+                true
+            }
+            _ => {
+                panic!("malformed attach");
+            }
         }
     }
     #[inline]
     fn drop_attach(&self, att: Attachment) {
-        let _ = VecAttach::from(att);
+        let _ = VectorAttach::from(att);
     }
 }
 
@@ -303,7 +342,7 @@ pub(crate) const COND_ORDER: &[u8] = b"ORDER";
 pub(crate) const COND_LIMIT: &[u8] = b"LIMIT";
 pub(crate) const COND_GROUP: &[u8] = b"GROUP";
 
-const DEFAULT_LIMIT: usize = 15;
+const DEFAULT_LIMIT: u16 = 15;
 
 #[derive(Debug, Clone, Default)]
 pub struct Condition {
@@ -351,6 +390,8 @@ pub type Field = (RingSlice, RingSlice);
 #[derive(Debug, Clone, Default)]
 pub struct VectorCmd {
     pub cmd: CommandType,
+    // 对于aggregation策略
+    pub route: Option<Route>,
     pub keys: Vec<RingSlice>,
     pub fields: Vec<Field>,
     pub wheres: Vec<Condition>,
@@ -361,11 +402,24 @@ pub struct VectorCmd {
 
 impl VectorCmd {
     #[inline(always)]
-    pub fn limit(&self) -> usize {
+    pub fn limit(&self, operation: Operation) -> u16 {
         match self.limit.limit.try_str_num(..) {
-            Some(limit) => limit,
-            None => DEFAULT_LIMIT,
+            Some(limit) => limit as u16,
+            None => match operation {
+                Operation::Get | Operation::Gets | Operation::MGet => DEFAULT_LIMIT,
+                Operation::Store | Operation::Meta | Operation::Other => 0,
+            },
         }
+    }
+}
+
+impl Display for VectorCmd {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "cmd:{:?}, route:{:?}, keys:{:?}",
+            self.cmd, self.route, self.keys
+        )
     }
 }
 
@@ -413,10 +467,35 @@ impl FieldVal {
     }
 }
 
+pub const DATE_YYMM: &str = "yymm";
+pub const DATE_YYMMDD: &str = "yymmdd";
+
+#[derive(Debug, Clone)]
+pub enum Postfix {
+    YYMM,
+    YYMMDD,
+}
+
+impl TryInto<Postfix> for &str {
+    type Error = Error;
+    fn try_into(self) -> std::result::Result<Postfix, Self::Error> {
+        match self.to_lowercase().as_str() {
+            DATE_YYMM => Ok(Postfix::YYMM),
+            DATE_YYMMDD => Ok(Postfix::YYMMDD),
+            _ => Err(Error::RequestProtocolInvalid),
+        }
+    }
+}
+
+pub enum KeysType<'a> {
+    Keys(&'a String),
+    Time,
+}
+
 pub trait Strategy {
     fn keys(&self) -> &[String];
     //todo 通过代理类型实现
-    fn condition_keys(&self) -> Box<dyn Iterator<Item = Option<&String>> + '_>;
+    fn keys_with_type(&self) -> Box<dyn Iterator<Item = KeysType> + '_>;
     fn write_database_table(&self, buf: &mut impl Write, date: &NaiveDate, hash: i64);
     fn write_si_database_table(&self, buf: &mut impl Write, hash: i64);
     fn batch(&self, limit: u64, vcmd: &VectorCmd) -> u64;

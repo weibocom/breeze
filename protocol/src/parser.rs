@@ -130,10 +130,8 @@ pub trait Proto: Unpin + Clone + Send + Sync + 'static {
     }
 
     #[inline]
-    fn update_attachment(&self, attachment: &mut Attachment, response: &mut Command) -> bool {
-        // 默认情况下，attachment应该为空
-        assert!(false, "{:?} {response}", attachment);
-        false
+    fn update_attachment(&self, _attachment: &mut Attachment, _responsee: &mut Command) -> bool {
+        panic!("unreachable");
     }
     #[inline]
     fn drop_attach(&self, _att: Attachment) {
@@ -153,7 +151,8 @@ pub trait RequestProcessor {
 // TODO Command实质就是response，考虑直接用response？ fishermen
 pub struct Command {
     ok: bool,
-    pub(crate) header: ResponseHeader,
+    // header 只对部分请求有效，改为option
+    pub(crate) header: Option<ResponseHeader>,
     count: u32,
     cmd: MemGuard,
 }
@@ -172,7 +171,7 @@ impl Command {
     pub fn from(ok: bool, cmd: ds::MemGuard) -> Self {
         Self {
             ok,
-            header: Default::default(),
+            header: None,
             count: 0,
             cmd,
         }
@@ -182,7 +181,7 @@ impl Command {
         let count = header.rows as u32;
         Self {
             ok,
-            header,
+            header: Some(header),
             count,
             cmd: body,
         }

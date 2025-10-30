@@ -17,7 +17,8 @@ pub struct CommandProperties {
     // 指令在不路由或者无server响应时的响应位置，
     pub(crate) padding_rsp: &'static str,
     pub(crate) noforward: bool,
-    pub(crate) quit: bool, // 是否需要quit掉连接
+    pub(crate) quit: bool,   // 是否需要quit掉连接
+    pub(crate) route: Route, // 请求路线，timeline、si？
 }
 
 // 默认响应
@@ -122,6 +123,8 @@ pub fn get_cfg(op_code: u16) -> crate::Result<&'static CommandProperties> {
 // }
 
 use Operation::*;
+
+use super::attachment::Route;
 type Cmd = CommandProperties;
 #[ctor::ctor]
 #[rustfmt::skip]
@@ -141,13 +144,28 @@ pub(super) static SUPPORTED: Commands = {
         Cmd::new("quit").arity(1).op(Meta).padding(pt[1]).nofwd().quit(),
 
         // kvector 相关的指令
-        Cmd::new("vget").arity(-2).op(Get).cmd_type(CommandType::VGet).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
         Cmd::new("vrange").arity(-2).op(Get).cmd_type(CommandType::VRange).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
         Cmd::new("vadd").arity(-2).op(Store).cmd_type(CommandType::VAdd).padding(pt[3]).has_key().can_hold_field(),
         // Cmd::new("vreplace").arity(-2).op(Store).cmd_type(CommandType::VReplace).padding(pt[3]).has_key().can_hold_field(),
         Cmd::new("vupdate").arity(-2).op(Store).cmd_type(CommandType::VUpdate).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
         Cmd::new("vdel").arity(-2).op(Store).cmd_type(CommandType::VDel).padding(pt[3]).has_key().can_hold_where_condition(),
-        Cmd::new("vcard").arity(-2).op(Get).cmd_type(CommandType::VCard).padding(pt[3]).has_key().can_hold_where_condition(),
+        Cmd::new("vcard").route(Route::Si).arity(-2).op(Get).cmd_type(CommandType::VCard).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
+
+        // vget 只是从timeline获取单条记录，所以route需要设置为timeline/main
+        Cmd::new("vget").route(Route::TimelineOrMain).arity(-2).op(Get).cmd_type(CommandType::VGet).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
+
+        // 对于timeline、si后缀指令，只是中间状态，为了处理方便，不额外增加字段，仍然作为独立指令来处理
+        Cmd::new("vrange.timeline").route(Route::TimelineOrMain).arity(-2).op(Get).cmd_type(CommandType::VRangeTimeline).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
+        Cmd::new("vrange.si").route(Route::Si).arity(-2).op(Get).cmd_type(CommandType::VRangeSi).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
+        Cmd::new("vadd.timeline").route(Route::TimelineOrMain).arity(-2).op(Store).cmd_type(CommandType::VAddTimeline).padding(pt[3]).has_key().can_hold_field(),
+        Cmd::new("vadd.si").route(Route::Si).arity(-2).op(Store).cmd_type(CommandType::VAddSi).padding(pt[3]).has_key().can_hold_field(),
+        Cmd::new("vupdate.timeline").route(Route::TimelineOrMain).arity(-2).op(Store).cmd_type(CommandType::VUpdateTimeline).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
+        // VUpdateSi, 在decr时，会用到update.si
+        Cmd::new("vupdate.si").route(Route::Si).arity(-2).op(Store).cmd_type(CommandType::VUpdateSi).padding(pt[3]).has_key().can_hold_field().can_hold_where_condition(),
+        Cmd::new("vdel.timeline").route(Route::TimelineOrMain).arity(-2).op(Store).cmd_type(CommandType::VDelTimeline).padding(pt[3]).has_key().can_hold_where_condition(),
+        // 部分业务，仍然会del si
+        Cmd::new("vdel.si").route(Route::Si).arity(-2).op(Store).cmd_type(CommandType::VDelSi).padding(pt[3]).has_key().can_hold_where_condition(),
+
     ] {
         cmds.add_support(c);
     }
@@ -194,9 +212,17 @@ impl CommandProperties {
         self.can_hold_where_condition = true;
         self
     }
+    pub(crate) fn route(mut self, route: Route) -> Self {
+        self.route = route;
+        self
+    }
     pub(crate) fn quit(mut self) -> Self {
         self.quit = true;
         self
+    }
+    #[inline]
+    pub fn get_route(&self) -> Route {
+        self.route
     }
 }
 
@@ -206,11 +232,20 @@ pub enum CommandType {
     // kvector 访问的指令
     VGet,
     VRange,
+    VCard,
     VAdd,
-    // VReplace,
     VUpdate,
     VDel,
-    VCard,
+
+    // 扩展的单表指令
+    VRangeTimeline,
+    VRangeSi,
+    VAddTimeline,
+    VAddSi,
+    VUpdateTimeline,
+    VUpdateSi, // 注意对于si，update只是基于count的incr、decr，并不是普通意义上的直接设置为某值
+    VDelTimeline,
+    VDelSi,
 
     // // 兼容redisclient而引入的指令
     // Select,
@@ -226,85 +261,3 @@ impl Default for CommandType {
         CommandType::Unknown
     }
 }
-// impl From<RingSlice> for CommandType {
-//     fn from(name: RingSlice) -> Self {
-//         if name.len() >= 7 {
-//             return Self::Unknown;
-//         }
-
-//         let mut oft = 0;
-//         // 第一个字符不是V，cmd就是扩展的兼容指令 or 未知指令
-//         if name.scan_to_uppercase(&mut oft) == b'V' {
-//             match name.scan_to_uppercase(&mut oft) {
-//                 b'R' => Self::parse_to_cmd(&name, oft, "VRANGE", Self::VRange),
-//                 b'A' => Self::parse_to_cmd(&name, oft, "VADD", Self::VAdd),
-//                 b'U' => Self::parse_to_cmd(&name, oft, "VUPDATE", Self::VUpdate),
-//                 b'D' => Self::parse_to_cmd(&name, oft, "VDEL", Self::VDel),
-//                 b'C' => Self::parse_to_cmd(&name, oft, "VCARD", Self::VCard),
-//                 _ => Self::Unknown,
-//             }
-//         } else {
-//             match name.scan_to_uppercase(&mut oft) {
-//                 b'S' => Self::parse_to_cmd(&name, oft, "SELECT", Self::Select),
-//                 b'P' => Self::parse_to_cmd(&name, oft, "PING", Self::Ping),
-//                 b'H' => Self::parse_to_cmd(&name, oft, "HELLO", Self::Hello),
-//                 b'Q' => Self::parse_to_cmd(&name, oft, "QUIT", Self::Quit),
-//                 _ => Self::Unknown,
-//             }
-//         }
-//     }
-// }
-
-// impl CommandType {
-//     /// 检测oft之后的name是否于对应cmd name相同，如果相同则返回对应的CMD
-//     #[inline]
-//     fn parse_to_cmd(name: &RingSlice, oft: usize, cmd: &str, cmd_type: CommandType) -> Self {
-//         // 检测oft位置目前只有1和2，1表示非‘V’开头的redis兼容指令，2表示V开头的kvector指令
-//         assert!(oft == 1 || oft == 2, "{}", name);
-
-//         if name.len() == cmd.len() && name.start_ignore_case(oft, cmd[oft..].as_bytes()) {
-//             cmd_type
-//         } else {
-//             Self::Unknown
-//         }
-//     }
-
-//     #[inline]
-//     pub(super) fn operation(&self) -> Operation {
-//         match self {
-//             CommandType::VRange => Operation::Gets,
-
-//             CommandType::Unknown => panic!("no operation for unknow!"),
-//             _ => Operation::Store,
-//         }
-//     }
-
-//     /// 这个type是否是合法的，unknow不合法
-//     #[inline]
-//     pub(super) fn is_invalid(&self) -> bool {
-//         match self {
-//             CommandType::Unknown => true,
-//             _ => false,
-//         }
-//     }
-// }
-
-// impl Default for CommandType {
-//     fn default() -> Self {
-//         Self::Unknown
-//     }
-// }
-
-// /// 扫描对应位置的子节，将对应位置的字符转为大写，同时后移读取位置oft
-// pub trait Uppercase {
-//     // 扫描当前子节，转成大写，并讲位置+1
-//     fn scan_to_uppercase(&self, oft: &mut usize) -> u8;
-// }
-
-// impl Uppercase for RingSlice {
-//     fn scan_to_uppercase(&self, oft: &mut usize) -> u8 {
-//         let b = self.at(*oft);
-//         *oft += 1;
-//         b.to_ascii_uppercase()
-//     }
-// }
