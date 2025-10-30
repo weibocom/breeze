@@ -18,7 +18,7 @@ use crate::{
 use attachment::{AttachType, Route};
 use chrono::NaiveDate;
 use ds::RingSlice;
-use sharding::hash::Hash;
+use sharding::hash::{HashGrouper, Hash};
 
 use self::attachment::VectorAttach;
 use self::packet::RedisPack;
@@ -28,12 +28,13 @@ use crate::kv::client::Client;
 use crate::kv::{ContextStatus, HandShakeStatus};
 use crate::HandShake;
 pub use command::CommandType;
+pub use flager::KvFlager;
 
 #[derive(Clone, Default)]
 pub struct Vector;
 
 impl Protocol for Vector {
-    fn parse_request<S: Stream, H: Hash, P: RequestProcessor>(
+    fn parse_request<S: Stream, H: Hash+HashGrouper, P: RequestProcessor>(
         &self,
         stream: &mut S,
         alg: &H,
@@ -253,7 +254,7 @@ impl Protocol for Vector {
 
 impl Vector {
     #[inline]
-    fn parse_request_inner<S: Stream, H: Hash, P: RequestProcessor>(
+    fn parse_request_inner<S: Stream, H: Hash+HashGrouper, P: RequestProcessor>(
         &self,
         packet: &mut RequestPacket<S>,
         alg: &H,
@@ -266,10 +267,37 @@ impl Vector {
             let mut flag = cfg.flag();
             let key = packet.parse_cmd(cfg, &mut flag)?;
 
+            if cfg.multi && key.is_some() {
+                // 这里可能有多个key，单key请求按照原来的逻辑处理
+                // 属于同一个table的多个key，可以组成多key请求，即：select ... in(key1,...,keyN)
+                // 多key请求根据keys格式和策略分割key、并分组：(shard_idx, year, month, day)四元组一致，分为一组
+                // 然后按照分组，顺序构建请求，并发送；
+                // TODO：当前只支持一组key，后续支持多组key
+                if let Some(sorted_keys) = alg.group(&key.unwrap()) {
+                    if sorted_keys.len() > 1 {
+                        log::debug!("+++ kvector temporary req error: only support keys in one table now");
+                        return Err(Error::RequestProtocolInvalid)
+                    }
+                    let org_cmd = packet.take(); // 原始请求
+                    for i in 0..sorted_keys.len() {
+                        let (sorted_key, h) = &sorted_keys[i];
+                        // 构建cmd，准备后续处理
+                        let cmd = cfg.build_request(*h, i==0, flag.clone(), sorted_key, &org_cmd);
+                        log::debug!("+++ kvector/{} req:{:?}", cfg.name, cmd);
+                        let last = i==(sorted_keys.len()-1);
+                        process.process(cmd, last);
+                    }
+                    return Ok(())
+                }
+            }
+            let main_key = match key {
+                Some(key) => Some(packet.main_key(&key)),
+                None => None,
+            };
             // 构建cmd，准备后续处理
             let cmd = packet.take();
-            let hash = packet.hash(key, alg);
-            log::debug!("+++ kvector/{} key:{:?}/{}", cfg.name, key, hash);
+            let hash = packet.hash(main_key, alg);
+            log::debug!("+++ kvector/{} main_key:{:?}/{}", cfg.name, main_key, hash);
             let cmd = HashedCommand::new(cmd, hash, flag);
             process.process(cmd, true);
         }

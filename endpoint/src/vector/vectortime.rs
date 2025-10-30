@@ -1,5 +1,5 @@
 use crate::kv::kvtime::KVTime;
-
+use crate::kv::uuid::*;
 use chrono::NaiveDate;
 use core::fmt::Write;
 use ds::RingSlice;
@@ -40,6 +40,12 @@ impl VectorTime {
     //策略处已作校验
     pub fn get_date(&self, keys: &[RingSlice]) -> Result<NaiveDate, Error> {
         let date = keys.last().unwrap();
+        // keys_name长度为1，则key本身是uuid
+        if self.keys_name.len() == 1 {
+            let k = &keys[0];
+            let uuid = k.uuid();
+            return Ok(uuid.native_date())
+        }
         let ymd = match self.keys_name.last().unwrap().as_str() {
             DATE_YYMM => (
                 date.try_str_num(0..0 + 2)
@@ -99,7 +105,7 @@ impl VectorTime {
     }
 
     pub(crate) fn check_vector_cmd(&self, vcmd: &protocol::vector::VectorCmd) -> Result<(), Error> {
-        if vcmd.keys.len() != self.keys_name.len() {
+        if vcmd.keys.len() < self.keys_name.len() {
             return Err(Error::RequestProtocolInvalid);
         }
         Ok(())

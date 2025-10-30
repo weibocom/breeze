@@ -14,7 +14,7 @@ use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
 use rand::seq::SliceRandom;
-use sharding::hash::{Hash, HashKey};
+use sharding::hash::{Hash, HashKey, HashGrouper};
 
 use crate::dns::DnsConfig;
 use crate::Timeout;
@@ -55,6 +55,13 @@ where
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
         self.strategist.hasher().hash(k)
     }
+}
+
+impl<E, P> HashGrouper for KvService<E, P>
+where
+    E: Endpoint,
+    P: Protocol,
+{
 }
 
 impl<E, Req, P> Topology for KvService<E, P>

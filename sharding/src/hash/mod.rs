@@ -22,6 +22,7 @@ pub use random::RandomHash;
 pub use raw::Raw;
 pub use rawcrc32local::Rawcrc32local;
 pub use rawsuffix::RawSuffix;
+use ds::RingSlice;
 
 pub mod crc;
 
@@ -56,6 +57,12 @@ const KEY_DELIMITER_UNDERSCORE: &str = "underscore";
 const KEY_DELIMITER_NONE: u8 = 0;
 
 const NAME_RAWSUFFIX: &str = "rawsuffix";
+
+// 将输入的key列表，按各自的hash规则分组；每组可以发往同一个后端
+// 如redis mget、mysql select in(...)场景
+pub trait HashGrouper {
+    fn group(&self, _key: &RingSlice) -> Option<Vec<(Vec<u8>, i64)>> { None }
+}
 
 #[enum_dispatch]
 pub trait Hash {

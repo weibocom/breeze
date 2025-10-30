@@ -7,6 +7,7 @@ use redis::Value;
 mod aggregation;
 mod byme;
 mod assist;
+mod kvtime;
 
 pub(crate) const RESTYPE: &str = "vector";
 pub(crate) const CMD_VGET: &str = "vget";

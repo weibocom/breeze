@@ -63,6 +63,17 @@ impl Strategist {
                     ns.si_backends.len() as u32,
                 ))
             }
+            "kvtime" => {
+                Self::VectorTime(VectorTime::new_with_db(
+                    ns.basic.db_name.clone(),
+                    ns.basic.table_name.clone(),
+                    ns.basic.db_count,
+                    //此策略默认所有年都有同样的shard，basic也只配置了一项，也暗示了这个默认
+                    ns.backends.iter().next().unwrap().1.len() as u32,
+                    ns.basic.table_postfix.as_str().try_into().ok()?,
+                    ns.basic.keys.clone(),
+                ))
+            }
             _ => {
                 if ns.basic.keys.len() < 2 {
                     log::warn!("len keys < 2");
@@ -119,10 +130,22 @@ impl Strategist {
         }
     }
 
-pub(crate) fn check_vector_cmd(&self, vcmd: &protocol::vector::VectorCmd) -> Result<()> {
+    pub(crate) fn check_vector_cmd(&self, vcmd: &protocol::vector::VectorCmd) -> Result<()> {
         match self {
             Strategist::VectorTime(inner) => inner.check_vector_cmd(vcmd),
             Strategist::Aggregation(inner) => inner.check_vector_cmd(vcmd),
+        }
+    }
+    pub(crate) fn keys(&self) -> &[String] {
+        match self {
+            Strategist::VectorTime(inner) => inner.keys(),
+            Strategist::Aggregation(inner) => inner.keys(),
+        }
+    }
+    pub(crate) fn table_postfix(&self) -> Postfix {
+        match self {
+            Strategist::VectorTime(inner) => inner.table_postfix(),
+            Strategist::Aggregation(inner) => inner.table_postfix(),
         }
     }
 

@@ -18,7 +18,7 @@ use super::{
 use crate::dns::{DnsConfig, DnsLookup};
 use crate::msgque::SizedQueueInfo;
 use crate::{CloneAbleAtomicBool, Endpoint, Endpoints, Timeout, Topology};
-use sharding::hash::{Hash, HashKey, Hasher, Padding};
+use sharding::hash::{Hash, HashKey, Hasher, Padding, HashGrouper};
 
 // ip vintage下线后，2分钟后真正从读列表中下线，写列表是立即下线的
 const OFFLINE_LIMIT_SECONDS: u64 = 60 * 2;
@@ -91,6 +91,13 @@ where
     fn hash<K: HashKey>(&self, k: &K) -> i64 {
         PADDING.hash(k)
     }
+}
+
+impl<E, P> HashGrouper for MsgQue<E, P>
+where
+    E: Endpoint,
+    P: Protocol,
+{
 }
 
 impl<E, Req, P> Topology for MsgQue<E, P>

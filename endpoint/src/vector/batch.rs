@@ -195,6 +195,10 @@ impl Aggregation {
             CommandType::Unknown => panic!("not sup {:?}", vcmd.cmd),
         }
     }
+    #[inline]
+    pub(crate) fn table_postfix(&self) -> Postfix {
+        self.table_postfix.clone()
+    }
 }
 
 #[derive(Clone, Debug)]

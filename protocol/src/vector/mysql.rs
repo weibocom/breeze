@@ -175,10 +175,12 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
             extra,
         ) = self;
 
-        // 对于vupdate、vdel，必须得有where语句
+        // 对于kv的vdel、vupdate不需要where语句
+        // 对于si/timeline的vdel、vupdate，必须得有where语句
+        // TODO: 对于聚合访问的vdel、vupdate需要where语句
         match cmd {
-            CommandType::VUpdate
-            | CommandType::VDel
+            CommandType::VUpdateSi
+            | CommandType::VDelSi
             | CommandType::VUpdateTimeline
             | CommandType::VDelTimeline => {
                 if wheres.len() == 0 {
@@ -189,12 +191,31 @@ impl<'a, S: Strategy> Display for KeysAndCondsAndOrderAndLimit<'a, S> {
             _ => {}
         }
 
+        // 有多个key，则使用 ...in
+        let mkey_num = if keys.len() > strategy.keys().len() {
+            keys.len() - strategy.keys().len()
+        } else {
+            0
+        };
         for (i, key) in (&mut strategy.keys_with_type()).enumerate() {
             if let KeysType::Keys(key) = key {
                 if i == 0 {
-                    let _ = write!(f, "`{}`={}", key, Val(&keys[i]));
+                    if mkey_num == 0 {
+                        let _ = write!(f, "`{}`={}", key, Val(&keys[i]));
+                    } else {
+                        debug_assert!(*cmd == CommandType::VDel || *cmd == CommandType::VGet || *cmd == CommandType::VRange);
+                        for j in 0..(mkey_num+1) {
+                            if j == 0 {
+                                let _ = write!(f, "`{}` in ({}", key, Val(&keys[i+j]));
+                            } else if j == mkey_num {
+                                let _ = write!(f, ",{})", Val(&keys[i+j]));
+                            } else {
+                                let _ = write!(f, ",{}", Val(&keys[i+j]));
+                            }
+                        }
+                    }
                 } else {
-                    let _ = write!(f, " and `{}`={}", key, Val(&keys[i]));
+                    let _ = write!(f, " and `{}`={}", key, Val(&keys[i+mkey_num]));
                 }
             }
         }

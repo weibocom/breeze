@@ -1,6 +1,7 @@
 use discovery::{Inited, TopologyWrite};
 use protocol::{Protocol, Request, ResOption, Resource};
-use sharding::hash::{Hash, HashKey};
+use sharding::hash::{Hash, HashKey, HashGrouper};
+use ds::RingSlice;
 
 use crate::Timeout;
 
@@ -34,7 +35,7 @@ procs::topology_dispatcher! {
         fn build<P:Protocol>(addr: &str, p: P, r: Resource, service: &str, to: Timeout) -> Self {Self::build_o(addr, p, r, service, to, Default::default())}
     } => where P:Protocol, E:Endpoint<Item = R> + Inited, R: Request
 
-    pub trait Topology : Endpoint + Hash{
+    pub trait Topology : Endpoint + Hash + HashGrouper {
         fn exp_sec(&self) -> u32 {86400}
         fn has_attach(&self) -> bool {false}
     } => where P:Protocol, E:Endpoint<Item = R>, R:Request, Topologies<E, P>: Endpoint
@@ -48,6 +49,10 @@ procs::topology_dispatcher! {
         fn disgroup<'a>(&self, _path: &'a str, cfg: &'a str) -> Vec<(&'a str, &'a str)>;
         fn need_load(&self) -> bool;
         fn load(&mut self) -> bool;
+    } => where P:Protocol, E:Endpoint
+
+    trait HashGrouper {
+        fn group(&self, _key: &RingSlice) -> Option<Vec<(Vec<u8>, i64)>> { None }
     } => where P:Protocol, E:Endpoint
 
     trait Hash {
