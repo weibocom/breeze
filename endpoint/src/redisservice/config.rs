@@ -152,7 +152,7 @@ impl RedisNamespace {
 
     #[inline]
     fn decrypt_password(&self) -> Result<String, Box<dyn std::error::Error>> {
-        let key_pem = fs::read_to_string(&context::get().key_path)?;
+        let key_pem = fs::read_to_string(&context::get().redis_key_path)?;
         let encrypted_data = general_purpose::STANDARD.decode(self.basic.password.as_bytes())?;
         let decrypted_data = ds::decrypt::decrypt_password(&key_pem, &encrypted_data)?;
         let decrypted_string = String::from_utf8(decrypted_data)?;
