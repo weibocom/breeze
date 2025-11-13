@@ -5,16 +5,30 @@ pub use flag::RedisFlager;
 pub(crate) mod packet;
 
 use crate::{
+    Command, Commander, Error, HandShake, HashedCommand, Metric, MetricItem, MetricName, Protocol,
+    RequestProcessor, ResOption, Result, Stream, Writer,
     redis::command::CommandType,
     redis::{error::RedisError, packet::RequestPacket},
-    Command, Commander, Error, HashedCommand, Metric, MetricItem, MetricName, Protocol,
-    RequestProcessor, Result, Stream, Writer,
 };
-pub use packet::{transmute, Packet, ResponseContext};
+pub use packet::{Packet, ResponseContext, transmute};
 use sharding::hash::Hash;
 
 #[derive(Clone, Default)]
 pub struct Redis;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum HandShakeStatus {
+    Init = 0,
+    Sent = 1,
+    Success = 2,
+}
+
+impl Default for HandShakeStatus {
+    fn default() -> Self {
+        Self::Init
+    }
+}
 
 impl Redis {
     #[inline]
@@ -91,9 +105,48 @@ impl Redis {
 }
 
 impl Protocol for Redis {
+    fn handshake(&self, stream: &mut impl Stream, option: &mut ResOption) -> Result<HandShake> {
+        let status = transmute(stream.context()).status;
+
+        match status {
+            HandShakeStatus::Init => {
+                // a two-bulk "AUTH" command.
+                let pass = &option.token;
+                let mut auth_cmd = Vec::with_capacity(32);
+                auth_cmd.extend_from_slice(b"*2\r\n$4\r\nAUTH\r\n$");
+                auth_cmd.extend_from_slice(pass.len().to_string().as_bytes());
+                auth_cmd.extend_from_slice(b"\r\n");
+                auth_cmd.extend_from_slice(pass.as_bytes());
+                auth_cmd.extend_from_slice(b"\r\n");
+
+                stream.write_all(&auth_cmd)?;
+                transmute(stream.context()).status = HandShakeStatus::Sent;
+                Ok(HandShake::Continue)
+            }
+
+            HandShakeStatus::Sent => {
+                let data = stream.slice();
+                if let Some(idx) = data.find_lf_cr(0) {
+                    // response should be +OK\r\n
+                    if data.start_with(0, b"+OK\r\n") {
+                        stream.ignore(idx + 2);
+                        transmute(stream.context()).status = HandShakeStatus::Success;
+                        return Ok(HandShake::Success);
+                    }
+                    log::warn!("redis auth failed response:{:?}", data);
+                    Err(Error::AuthFailed)
+                } else {
+                    stream.reserve(8);
+                    Ok(HandShake::Continue)
+                }
+            }
+            HandShakeStatus::Success => Ok(HandShake::Success),
+        }
+    }
     #[inline]
     fn config(&self) -> crate::Config {
         crate::Config {
+            need_auth: true,
             pipeline: true,
             ..Default::default()
         }

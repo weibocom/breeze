@@ -121,6 +121,13 @@ impl<'a, P: Protocol, E: Endpoint> Endpoints<'a, P, E> {
             .pop()
             .expect("take")
     }
+
+    pub fn take_or_build_one_with_res(&mut self, addr: &str, to: Timeout, res: ResOption) -> E {
+        self.take_or_build_with_res(&[addr.to_owned()], to, res)
+            .pop()
+            .expect("take")
+    }
+
     pub fn take_or_build(&mut self, addrs: &[String], to: Timeout) -> Vec<E> {
         addrs
             .iter()
@@ -132,6 +139,27 @@ impl<'a, P: Protocol, E: Endpoint> Endpoints<'a, P, E> {
                     .unwrap_or_else(|| {
                         let p = self.parser.clone();
                         E::build(&addr, p, self.resource, self.service, to)
+                    })
+            })
+            .collect()
+    }
+
+    pub fn take_or_build_with_res(
+        &mut self,
+        addrs: &[String],
+        to: Timeout,
+        res: ResOption,
+    ) -> Vec<E> {
+        addrs
+            .iter()
+            .map(|addr| {
+                self.cache
+                    .get_mut(addr)
+                    .map(|endpoints| endpoints.pop())
+                    .flatten()
+                    .unwrap_or_else(|| {
+                        let p = self.parser.clone();
+                        E::build_o(&addr, p, self.resource, self.service, to, res.clone())
                     })
             })
             .collect()

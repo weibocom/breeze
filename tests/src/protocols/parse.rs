@@ -1,9 +1,9 @@
 use crate::proto_hook;
 use ds::BufWriter;
-use protocol::redis::transmute;
-use protocol::redis::Redis;
 use protocol::Error::ProtocolIncomplete;
 use protocol::StreamContext;
+use protocol::redis::Redis;
+use protocol::redis::transmute;
 
 use protocol::BufRead;
 const CTX: StreamContext = [0; 16];
@@ -159,7 +159,7 @@ fn test_bulk() {
                 Err(ProtocolIncomplete(left)) => {
                     let bulk = 7;
                     assert_eq!(left, bulk * 64);
-                    assert_eq!(ctx.bulk, bulk);
+                    assert_eq!(ctx.bulk as usize, bulk);
                     assert_eq!(ctx.oft, 4);
                 }
                 e => panic!("Expected ProtocolIncomplete, got: {:?}", e),
@@ -168,7 +168,7 @@ fn test_bulk() {
                 Err(ProtocolIncomplete(left)) => {
                     let bulk = 6;
                     assert_eq!(left, bulk * 64);
-                    assert_eq!(ctx.bulk, bulk);
+                    assert_eq!(ctx.bulk as usize, bulk);
                     assert_eq!(ctx.oft, 13);
                 }
                 e => panic!("Expected ProtocolIncomplete, got: {:?}", e),
@@ -177,7 +177,7 @@ fn test_bulk() {
                 Err(ProtocolIncomplete(left)) => {
                     let bulk = 5;
                     assert_eq!(left, bulk * 64);
-                    assert_eq!(ctx.bulk, bulk);
+                    assert_eq!(ctx.bulk as usize, bulk);
                     assert_eq!(ctx.oft, 18);
                 }
                 e => panic!("Expected ProtocolIncomplete, got: {:?}", e),
@@ -186,7 +186,7 @@ fn test_bulk() {
                 Err(ProtocolIncomplete(left)) => {
                     let bulk = 4;
                     assert_eq!(left, bulk * 64);
-                    assert_eq!(ctx.bulk, bulk);
+                    assert_eq!(ctx.bulk as usize, bulk);
                     assert_eq!(ctx.oft, 22);
                 }
                 e => panic!("Expected ProtocolIncomplete, got: {:?}", e),
@@ -195,7 +195,7 @@ fn test_bulk() {
                 Err(ProtocolIncomplete(left)) => {
                     let bulk = 3;
                     assert_eq!(left, bulk * 64);
-                    assert_eq!(ctx.bulk, bulk);
+                    assert_eq!(ctx.bulk as usize, bulk);
                     assert_eq!(ctx.oft, 28);
                 }
                 e => panic!("Expected ProtocolIncomplete, got: {:?}", e),
@@ -204,7 +204,7 @@ fn test_bulk() {
                 Err(ProtocolIncomplete(left)) => {
                     let bulk = 2;
                     assert_eq!(left, bulk * 64);
-                    assert_eq!(ctx.bulk, bulk);
+                    assert_eq!(ctx.bulk as usize, bulk);
                     assert_eq!(ctx.oft, 34);
                 }
                 e => panic!("Expected ProtocolIncomplete, got: {:?}", e),
@@ -214,7 +214,7 @@ fn test_bulk() {
                 Err(ProtocolIncomplete(left)) => {
                     let bulk = 4;
                     assert_eq!(left, bulk * 64);
-                    assert_eq!(ctx.bulk, bulk);
+                    assert_eq!(ctx.bulk as usize, bulk);
                     assert_eq!(ctx.oft, 38);
                 }
                 e => panic!("Expected ProtocolIncomplete, got: {:?}", e),
@@ -223,7 +223,7 @@ fn test_bulk() {
                 Err(ProtocolIncomplete(left)) => {
                     let bulk = 3;
                     assert_eq!(left, bulk * 64);
-                    assert_eq!(ctx.bulk, bulk);
+                    assert_eq!(ctx.bulk as usize, bulk);
                     assert_eq!(ctx.oft, 42);
                 }
                 e => panic!("Expected ProtocolIncomplete, got: {:?}", e),
@@ -232,7 +232,7 @@ fn test_bulk() {
                 Err(ProtocolIncomplete(left)) => {
                     let bulk = 2;
                     assert_eq!(left, bulk * 64);
-                    assert_eq!(ctx.bulk, bulk);
+                    assert_eq!(ctx.bulk as usize, bulk);
                     assert_eq!(ctx.oft, 46);
                 }
                 e => panic!("Expected ProtocolIncomplete, got: {:?}", e),
@@ -241,7 +241,7 @@ fn test_bulk() {
                 Err(ProtocolIncomplete(left)) => {
                     let bulk = 1;
                     assert_eq!(left, bulk * 64);
-                    assert_eq!(ctx.bulk, bulk);
+                    assert_eq!(ctx.bulk as usize, bulk);
                     assert_eq!(ctx.oft, 50);
                 }
                 e => panic!("Expected ProtocolIncomplete, got: {:?}", e),
@@ -250,7 +250,7 @@ fn test_bulk() {
                 Err(ProtocolIncomplete(left)) => {
                     let bulk = 2;
                     assert_eq!(left, bulk * 64);
-                    assert_eq!(ctx.bulk, bulk);
+                    assert_eq!(ctx.bulk as usize, bulk);
                     assert_eq!(ctx.oft, 54);
                 }
                 e => panic!("Expected ProtocolIncomplete, got: {:?}", e),
@@ -259,7 +259,7 @@ fn test_bulk() {
                 Err(ProtocolIncomplete(left)) => {
                     let bulk = 1;
                     assert_eq!(left, bulk * 64);
-                    assert_eq!(ctx.bulk, bulk);
+                    assert_eq!(ctx.bulk as usize, bulk);
                     assert_eq!(ctx.oft, 60);
                 }
                 e => panic!("Expected ProtocolIncomplete, got: {:?}", e),

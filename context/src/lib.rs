@@ -109,6 +109,13 @@ pub struct ContextOption {
     #[clap(long, help("private key path"), default_value("/var/private_key.pem"))]
     pub key_path: String,
 
+    #[clap(
+        long,
+        help("redis private key path"),
+        default_value("/var/redis_private_key.pem")
+    )]
+    pub redis_key_path: String,
+
     #[clap(long, help("region"), default_value(""))]
     pub region: String,
 

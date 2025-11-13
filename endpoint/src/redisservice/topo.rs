@@ -1,10 +1,10 @@
 use crate::{
+    Endpoint, Endpoints, PerformanceTuning, Topology,
     dns::{DnsConfig, DnsLookup},
     shards::Shard,
-    Endpoint, Endpoints, PerformanceTuning, Topology,
 };
 use discovery::TopologyWrite;
-use protocol::{Protocol, RedisFlager, Request, Resource::Redis};
+use protocol::{Protocol, RedisFlager, Request, ResOption, Resource::Redis};
 use sharding::distribution::Distribute;
 use sharding::hash::{Hash, HashKey, Hasher};
 
@@ -18,6 +18,7 @@ pub struct RedisService<E, P> {
     distribute: Distribute,
     parser: P,
     cfg: Box<DnsConfig<RedisNamespace>>,
+    password: String,
 }
 impl<E, P> From<P> for RedisService<E, P> {
     #[inline]
@@ -28,6 +29,7 @@ impl<E, P> From<P> for RedisService<E, P> {
             hasher: Default::default(),
             distribute: Default::default(),
             cfg: Default::default(),
+            password: Default::default(),
         }
     }
 }
@@ -188,6 +190,18 @@ where
         assert_eq!(addrs.len(), self.cfg.shards_url.len());
         // 到这之后，所有的shard都能解析出ip
 
+        // 如果密码不一致，则清空所有现有的shard
+        if self.password != self.cfg.basic.password {
+            self.shards.clear();
+            self.password = self.cfg.basic.password.clone();
+        }
+
+        // Redis认证只需要密码，无需用户名
+        let res_option = ResOption {
+            token: self.cfg.basic.password.clone(),
+            username: String::new(), // Redis不需要用户名
+        };
+
         // 把所有的endpoints cache下来
         let mut endpoints: Endpoints<'_, P, E> =
             Endpoints::new(&self.cfg.service, &self.parser, Redis);
@@ -199,10 +213,18 @@ where
         // 遍历所有的shards_url
         addrs.iter().for_each(|ips| {
             assert!(ips.len() >= 2);
-            let master = endpoints.take_or_build_one(&ips[0], self.cfg.timeout_master());
+            let master = endpoints.take_or_build_one_with_res(
+                &ips[0],
+                self.cfg.timeout_master(),
+                res_option.clone(),
+            );
             // 第0个是master，如果master提供读，则从第0个开始。
             let oft = if self.cfg.basic.master_read { 0 } else { 1 };
-            let slaves = endpoints.take_or_build(&ips[oft..], self.cfg.timeout_slave());
+            let slaves = endpoints.take_or_build_with_res(
+                &ips[oft..],
+                self.cfg.timeout_slave(),
+                res_option.clone(),
+            );
             let shard = Shard::selector(
                 self.cfg.basic.selector.tuning_mode(),
                 master,
@@ -213,6 +235,7 @@ where
             shard.check_region_len(ty, &self.cfg.service);
             self.shards.push(shard);
         });
+
         Some(())
     }
 }
