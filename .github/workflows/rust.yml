@@ -63,7 +63,7 @@ jobs:
             -p 8776:8776 \
             -p 8777:8777 \
             -p 8778:8778 \
-            --name breeze_github_ci hustfisher/breeze:githubci115
+            --name breeze_github_ci viciousstar/breeze:githubci117
       - uses: actions/checkout@v3
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
