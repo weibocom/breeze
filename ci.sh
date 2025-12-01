@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 brz_home="/data1/ci/breeze"
 mkdir -p $brz_home
 
@@ -11,7 +11,39 @@ container_name=breeze_github_ci
 docker ps -a | grep "$container_name" && docker rm -f "$container_name"
 
 
-docker run --rm -d -v $brz_home:/data1/resource/breeze  --net="host"  --name "$container_name"  parabala/breeze:githubci108
+docker run --rm -d \
+  -v "$brz_home":/data1/resource/breeze \
+  -p 8080:8080 \
+  -p 13739:13739 \
+  -p 13740:13740 \
+  -p 13741:13741 \
+  -p 13742:13742 \
+  -p 56378:56378 \
+  -p 56379:56379 \
+  -p 56380:56380 \
+  -p 56381:56381 \
+  -p 56382:56382 \
+  -p 56383:56383 \
+  -p 56384:56384 \
+  -p 56385:56385 \
+  -p 56386:56386 \
+  -p 56387:56387 \
+  -p 56388:56388 \
+  -p 56389:56389 \
+  -p 56390:56390 \
+  -p 56391:56391 \
+  -p 56392:56392 \
+  -p 56393:56393 \
+  -p 8010:8010 \
+  -p 8011:8011 \
+  -p 8012:8012 \
+  -p 8013:8013 \
+  -p 8775:8775 \
+  -p 8776:8776 \
+  -p 8777:8777 \
+  -p 8778:8778 \
+  --name "$container_name" \
+  viciousstar/breeze:githubci120
 
 # rm -rf $brz_home/*
 mkdir -p $brz_home/logs
@@ -24,7 +56,7 @@ touch $brz_home/socks/127.0.0.1:8080+config+cloud+counterservice+testbreeze+mesh
 touch $brz_home/socks/127.0.0.1:8080+config+cloud+phantom+testbreeze+phantomtest@phantom:9303@pt
 touch $brz_home/socks/127.0.0.1:8080+config+cloud+kv+testbreeze+kvmeshtest@kv:3306@kv
 touch $brz_home/socks/127.0.0.1:8080+config+cloud+vector+testbreeze+vectortest@vector:3308@vector
-
+touch $brz_home/socks/127.0.0.1:8080+config+cloud+mq+testbreeze+mcqmeshtest_1@msgque:56815@mq
 
 cargo build
 nohup ./target/debug/agent --discovery vintage://127.0.0.1:8080 --snapshot $brz_home/snapshot --service-path $brz_home/socks --log-dir $brz_home/logs --port 9984 --metrics-probe 8.8.8.8:53 --log-level info --idc-path 127.0.0.1:8080/3/config/breeze/idc_region --key-path .github/workflows/private_key.pem > $brz_home/logs/log.file  2>&1 &
@@ -38,6 +70,7 @@ export mc=localhost:9301
 export phantom=localhost:9303
 export mysql=localhost:3306
 export vector=localhost:3308
+export mq=localhost:56815
 export min_key=1
 export max_key=10000
 export socks_dir=$brz_home/socks
