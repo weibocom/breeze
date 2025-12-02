@@ -31,7 +31,39 @@ jobs:
           docker run --rm --name breeze_ci_mysql4623  -p 4623:3306 -d parabala/mysqlci_with_schema:v0.0.2
           docker run --rm --name breeze_ci_mysql4624  -p 4624:3306 -d parabala/mysqlci_with_schema:v0.0.2
       - name: Prepare Vintage_MC_Redis
-        run: docker run  -d    -v /home/runner/work/breeze:/data1/resource/breeze  --net="host"  --name breeze_github_ci hustfisher/breeze:githubci115
+        run: |
+          docker run  -d \
+            -v /home/runner/work/breeze:/data1/resource/breeze \
+            -p 8080:8080 \
+            -p 13739:13739 \
+            -p 13740:13740 \
+            -p 13741:13741 \
+            -p 13742:13742 \
+            -p 56378:56378 \
+            -p 56379:56379 \
+            -p 56380:56380 \
+            -p 56381:56381 \
+            -p 56382:56382 \
+            -p 56383:56383 \
+            -p 56384:56384 \
+            -p 56385:56385 \
+            -p 56386:56386 \
+            -p 56387:56387 \
+            -p 56388:56388 \
+            -p 56389:56389 \
+            -p 56390:56390 \
+            -p 56391:56391 \
+            -p 56392:56392 \
+            -p 56393:56393 \
+            -p 8010:8010 \
+            -p 8011:8011 \
+            -p 8012:8012 \
+            -p 8013:8013 \
+            -p 8775:8775 \
+            -p 8776:8776 \
+            -p 8777:8777 \
+            -p 8778:8778 \
+            --name breeze_github_ci viciousstar/breeze:githubci120
       - uses: actions/checkout@v3
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
@@ -42,7 +74,6 @@ jobs:
         run: cargo build
       - name: Check Vintage
         run: |
-          docker ps -a
           curl http://127.0.0.1:8080/config/cloud/redis/testbreeze/redismeshtest
           curl http://127.0.0.1:8080/config/v1/cache.service.testbreeze.pool.yf/all
           sleep 1
@@ -76,20 +107,12 @@ jobs:
       - name: Check Status
         run: |
           sleep 6s
-          netstat -nat|grep LISTEN
-          #ps -aux|grep breeze
+          docker ps -a
+          docker inspect breeze_github_ci
+          netstat -natp|grep LISTEN
           ls -all /home/runner/work/breeze/snapshot 
           ls -all /home/runner/work/breeze/socks
           ls -all /home/runner/work/breeze/logs
-          tail -10 /home/runner/work/breeze/logs/log.file
-          tail -10 /home/runner/work/breeze/logs/breeze.log
-          #cat /home/runner/work/breeze/logs/log.file
-          #cat /home/runner/work/breeze/logs/breeze.log
-        #- name: Run cargo-tarpaulin
-        #  uses: actions-rs/tarpaulin@v0.1
-        #  with:
-        #    version: "0.22.0"
-        #    args: "--features=github_workflow --features=console-api -- --test-threads 1"
       - name: Run unit tests
         run: cargo test -p tests --features github_workflow -p endpoint
       - name: wait until 2 mins
@@ -125,4 +148,7 @@ jobs:
         if: failure()
         run: |
           cat /home/runner/work/breeze/logs/log.file
-          cat /home/runner/work/breeze/logs/breeze.log
+      - name: Output docker log
+        if: failure()
+        run: |
+          docker logs breeze_github_ci

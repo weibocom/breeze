@@ -1,7 +1,7 @@
 use super::{Ipv4Vec, Record};
 pub(super) struct Lookup {}
 
-use dns_lookup::{getaddrinfo, AddrInfoHints};
+use dns_lookup::{AddrInfoHints, getaddrinfo};
 use libc::SOCK_STREAM;
 
 use std::net::IpAddr;
@@ -37,7 +37,7 @@ impl Lookup {
             let ret = self.dns_lookup(host);
             if ret.is_err() {
                 log::error!("Failed to lookup ip for {} err:{:?}", host, ret.err());
-                break;
+                continue;
             }
             let ips = ret.unwrap();
             if r.refresh(ips) {
