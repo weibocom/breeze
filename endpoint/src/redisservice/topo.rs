@@ -78,7 +78,7 @@ where
         assert!(shard_idx < self.len(), "{} {:?} {}", shard_idx, req, self);
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
-        log::debug!("+++ redis {}  send master{} {}=>{:?}", self, req, shard_idx, req);
+        log::debug!("+++ redis send master/{} {}=>{:?} => {}", shard_idx, req, req, self);
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() && !req.master_only() {

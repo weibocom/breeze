@@ -63,6 +63,7 @@ impl<P, Req> BackendChecker<P, Req> {
         metrics::incr_task();
         while !self.finish.get() {
             be_conns += 1;
+            log::info!("connecting to backend: {}", self.addr);
             let stream = self.reconnect().await;
             if stream.is_none() {
                 // 连接失败，按策略sleep

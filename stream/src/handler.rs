@@ -100,6 +100,7 @@ where
         }
         self.ping_cycle = 0;
         assert_eq!(self.pending.len(), 0, "pending must be empty=>{:?}", self);
+        log::debug!("+++ check_alive handler:{:?} cap:{}", self, self.s.cap());
         let noop = noop_waker::noop_waker();
         let mut ctx = std::task::Context::from_waker(&noop);
         // cap == 0 说明从来没有发送过request，不需要poll_response。
@@ -187,6 +188,7 @@ where
                     Err(Error::UnexpectedData)
                 } else {
                     // 读到了EOF，连接已经断开。
+                    log::debug!("poll_checkalive read EOF, handler:{:?}", self);
                     Err(Error::Eof)
                 }
             }
@@ -245,7 +247,7 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
     }
     #[inline]
     fn refresh(&mut self) -> Result<bool> {
-        log::debug!("handler:{:?}", self);
+        log::debug!("+++ refresh handler:{:?}", self);
         self.s.try_gc();
         self.s.shrink();
 
