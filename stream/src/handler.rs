@@ -29,6 +29,9 @@ pub struct Handler<'r, Req, P, S> {
     // 连续多少个cycle检查到当前没有请求发送，则发送一个ping
     ping_cycle: u16,
     name: Path,
+
+    // 记录上次refresh时间，用于检测refresh间隔
+    last_refresh_time: Instant,
 }
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
 where
@@ -77,6 +80,7 @@ where
             req_buf: Vec::with_capacity(4),
             ping_cycle: 0,
             name,
+            last_refresh_time: Instant::now(),
         }
     }
     // 检查连接是否存在
@@ -104,13 +108,14 @@ where
         let noop = noop_waker::noop_waker();
         let mut ctx = std::task::Context::from_waker(&noop);
         // cap == 0 说明从来没有发送过request，不需要poll_response。
-        if self.s.cap() > 0 {
+        let result = if self.s.cap() > 0 {
             self.poll_sentonly_response(&mut ctx)
         } else {
             self.poll_checkalive(&mut ctx)
-        }
+        };
+        log::info!("+++ check_alive result:{:?} handler:{:?}", result, self);
+        result
     }
-
     // 发送request. 读空所有的request，并且发送。直到pending或者error
     #[inline]
     fn poll_request(&mut self, cx: &mut Context) -> Poll<Result<()>> {
@@ -247,7 +252,12 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
     }
     #[inline]
     fn refresh(&mut self) -> Result<bool> {
-        log::debug!("+++ refresh handler:{:?}", self);
+        let elapsed = self.last_refresh_time.elapsed();
+        self.last_refresh_time = Instant::now();
+        if elapsed.as_secs() > 180 {
+            log::warn!("+++ refresh interval > 180s: {:?} handler:{:?}", elapsed, self);
+        }
+        log::debug!("+++ refresh interval: {:?} handler:{:?}", elapsed, self);
         self.s.try_gc();
         self.s.shrink();
 
@@ -262,7 +272,8 @@ impl<'r, Req, P, S: Debug> Debug for Handler<'r, Req, P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "handler num:{:?} resource:{:?} p_req:{} {} {} buf:{:?} data:{:?}",
+            "handler ping_cycle:{} num:{:?} resource:{:?} p_req:{} {} {} buf:{:?} data:{:?}",
+            self.ping_cycle,
             self.num,
             self.name,
             self.pending.len(),
