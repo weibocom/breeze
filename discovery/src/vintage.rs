@@ -69,17 +69,21 @@ impl Vintage {
     {
         // 设置config的path
         //let gurl = self.get_url(path);
+        let start = std::time::Instant::now();
         let uri: Uri = format!("http://{path}?index={index}").parse()?;
+        let uri_str = uri.to_string();
         log::debug!("lookup: {}", uri);
 
         let resp = timeout(Duration::from_secs(3), self.client.get(uri)).await??;
         let status = resp.status().as_u16();
+        log::debug!("lookup elapsed: {:?}, uri: {}, status: {}", start.elapsed(), uri_str, status);
         match status {
             404 => Ok(Config::NotFound),
             304 => Ok(Config::NotChanged),
             200 => {
                 let b = hyper::body::to_bytes(resp.into_body()).await?;
                 let resp: Response = serde_json::from_slice(&b)?;
+                log::debug!("lookup elapsed: {:?}, uri: {}", start.elapsed(), uri_str);
                 if resp.message == "ok" {
                     let (t_index, data) = resp.into();
                     if t_index == index {

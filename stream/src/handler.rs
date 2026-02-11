@@ -262,6 +262,7 @@ impl<'r, Req: Request, P: Protocol, S: AsyncRead + AsyncWrite + Unpin + Stream> 
         self.s.shrink();
 
         self.check_alive()?;
+        log::debug!("+++ refresh done handler:{:?}", self);
         Ok(true)
     }
 }
