@@ -78,7 +78,7 @@ where
         assert!(shard_idx < self.len(), "{} {:?} {}", shard_idx, req, self);
 
         let shard = unsafe { self.shards.get_unchecked(shard_idx) };
-        log::debug!("+++ redis send master/{} {}=>{:?} => {}", shard_idx, req, req, self);
+        log::debug!("+++ redis before send idx:{} {}=>{:?} => {}", shard_idx, req, req, self);
 
         // 如果有从，并且是读请求，如果目标server异常，会重试其他slave节点
         if shard.has_slave() && !req.operation().is_store() && !req.master_only() {
@@ -107,9 +107,11 @@ where
             // 只重试一次，重试次数过多，可能会导致雪崩。
             let try_next = ctx.runs == 1;
             req.try_next(try_next);
+            log::debug!("+++ redis send slave/{}/{} {}=>{:?} => {}", shard_idx, idx, req, req, self);
 
             endpoint.send(req)
         } else {
+            log::debug!("+++ redis send master/{} {}=>{:?} => {}", shard_idx, req, req, self);
             shard.master().send(req)
         }
     }
