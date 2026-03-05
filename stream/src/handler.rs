@@ -100,7 +100,8 @@ where
         // 目前调用方每隔30秒调用一次，所以这里是5分钟检查一次心跳
         // 如果最近5分钟之内pending为0（pending为0并不意味着没有请求），则发送一个ping作为心跳
         if self.ping_cycle <= 10 {
-            return Ok(());
+            log::debug!("+++ check_alive skipping ping_cycle:{}", self.ping_cycle);
+            // return Ok(());
         }
         self.ping_cycle = 0;
         assert_eq!(self.pending.len(), 0, "pending must be empty=>{:?}", self);
