@@ -200,6 +200,7 @@ where
         let res_option = ResOption {
             token: self.cfg.basic.password.clone(),
             username: String::new(), // Redis不需要用户名
+            conn_refresh_period: self.cfg.basic.conn_refresh_period,
         };
 
         // 把所有的endpoints cache下来

@@ -56,6 +56,7 @@ pub struct ResOption {
     // pub method: AuthMethod,
     pub token: String,
     pub username: String,
+    pub conn_refresh_period: u16,
 }
 
 #[derive(Default, Clone)]

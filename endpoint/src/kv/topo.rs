@@ -262,6 +262,7 @@ where
                 let res_option = ResOption {
                     token: self.cfg.basic.password.clone(),
                     username: self.cfg.basic.user.clone(),
+                    ..Default::default()
                 };
                 let master = self.take_or_build(
                     &mut old,

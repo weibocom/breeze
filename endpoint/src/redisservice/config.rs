@@ -41,6 +41,8 @@ pub struct Basic {
     pub(crate) master_read: bool,
     #[serde(default)]
     pub(crate) password: String,
+    #[serde(default)]
+    pub conn_refresh_period: u16,
 }
 
 impl RedisNamespace {

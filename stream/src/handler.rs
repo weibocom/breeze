@@ -28,6 +28,8 @@ pub struct Handler<'r, Req, P, S> {
 
     // 连续多少个cycle检查到当前没有请求发送，则发送一个ping
     ping_cycle: u16,
+    // ping_cycle_threshold 用于判断是否需要进行保活检查的阈值
+    ping_cycle_threshold: u16,
     name: Path,
 }
 impl<'r, Req, P, S> Future for Handler<'r, Req, P, S>
@@ -60,11 +62,19 @@ where
     S: AsyncRead + AsyncWrite + Stream + Unpin,
     P: Protocol + Unpin,
 {
-    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, path: Path) -> Self {
+    pub(crate) fn from(data: &'r mut Receiver<Req>, s: S, parser: P, path: Path, conn_refresh_period: u16) -> Self {
         data.enable();
         let name = path.clone();
         let rtt = path.rtt("req");
         let err = path.qps("be_err");
+        // conn_refresh_period 除以 TICK_INTERVAL_SECS 就是ping_cycle_threshold
+        // ping_cycle_threshold 默认是10， 如果 conn_refresh_period 大于0，则用计算的结果，结果范围修正在[1,10]
+        let ping_cycle_threshold = if conn_refresh_period > 0 {
+            (conn_refresh_period / rt::TICK_INTERVAL_SECS as u16).clamp(1, 10)
+        } else {
+            10
+        };
+        log::debug!("+++ ping_cycle_threshold: {} (conn_refresh_period: {})", ping_cycle_threshold, conn_refresh_period);
         Self {
             data,
             pending: VecDeque::with_capacity(31),
@@ -76,6 +86,7 @@ where
             num: Number::default(),
             req_buf: Vec::with_capacity(4),
             ping_cycle: 0,
+            ping_cycle_threshold,
             name,
         }
     }
@@ -95,7 +106,7 @@ where
         self.ping_cycle += 1;
         // 目前调用方每隔30秒调用一次，所以这里是5分钟检查一次心跳
         // 如果最近5分钟之内pending为0（pending为0并不意味着没有请求），则发送一个ping作为心跳
-        if self.ping_cycle <= 10 {
+        if self.ping_cycle <= self.ping_cycle_threshold {
             return Ok(());
         }
         self.ping_cycle = 0;

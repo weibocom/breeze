@@ -9,6 +9,8 @@ use ds::time::{interval, Duration, Instant, Interval};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
+pub const TICK_INTERVAL_SECS: u64 = 30;
+
 pub trait ReEnter {
     #[inline]
     fn last(&self) -> Option<Instant> {
@@ -54,7 +56,7 @@ impl<T: TimeoutCheck + Sized + Unpin, F: Future<Output = Result<()>> + Unpin + R
 {
     #[inline]
     pub fn timeout(f: F, timeout: T) -> Self {
-        let refresh_tick = interval(Duration::from_secs(30));
+        let refresh_tick = interval(Duration::from_secs(TICK_INTERVAL_SECS));
 
         Self {
             inner: f,
@@ -123,3 +125,4 @@ impl Status {
 }
 unsafe impl Send for Status {}
 unsafe impl Sync for Status {}
+

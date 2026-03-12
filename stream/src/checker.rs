@@ -102,7 +102,7 @@ impl<P, Req> BackendChecker<P, Req> {
             self.init.on();
             log::debug!("handler started:{:?} with: {}", self.path, self.addr);
             let p = self.parser.clone();
-            let handler = Handler::from(rx, stream, p, path_addr.clone());
+            let handler = Handler::from(rx, stream, p, path_addr.clone(), self.option.conn_refresh_period);
             let handler = Entry::timeout(handler, Timeout::from(self.timeout.ms()));
             let ret = handler.await;
             log::info!(
