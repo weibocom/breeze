@@ -113,6 +113,7 @@ where
         assert_eq!(self.pending.len(), 0, "pending must be empty=>{:?}", self);
         let noop = noop_waker::noop_waker();
         let mut ctx = std::task::Context::from_waker(&noop);
+        log::debug!("+++ check_alive stream cap: {}", self.s.cap());
         // cap == 0 说明从来没有发送过request，不需要poll_response。
         if self.s.cap() > 0 {
             self.poll_sentonly_response(&mut ctx)
