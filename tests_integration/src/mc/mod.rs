@@ -36,9 +36,11 @@ fn buffer_capacity_a() {
     v_sizes = [0, 4, 40, 400, 4000, 8000, 20000, 1048507];
     for v_size in v_sizes {
         let val = vec![0x41; v_size];
-        assert!(client
-            .set(key, &String::from_utf8_lossy(&val).to_string(), 2)
-            .is_ok());
+        assert!(
+            client
+                .set(key, &String::from_utf8_lossy(&val).to_string(), 2)
+                .is_ok()
+        );
         let result: Result<Option<String>, MemcacheError> = client.get(key);
         assert!(result.is_ok());
         assert_eq!(

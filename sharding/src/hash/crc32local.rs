@@ -3,8 +3,8 @@
 use std::fmt::Display;
 
 use super::{
-    crc32::{self, CRC32TAB, CRC_SEED},
     DebugName, Hash,
+    crc32::{self, CRC_SEED, CRC32TAB},
 };
 
 #[derive(Default, Clone, Debug)]

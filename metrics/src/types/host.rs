@@ -1,8 +1,8 @@
 use psutil::process::Process;
 
 use super::base::*;
-use crate::{ItemWriter, BASE_PATH};
-use ds::{time::Instant, Buffers, BUF_RX, BUF_TX};
+use crate::{BASE_PATH, ItemWriter};
+use ds::{BUF_RX, BUF_TX, Buffers, time::Instant};
 use std::sync::atomic::{AtomicI64, Ordering::*};
 
 static TASK_NUM: AtomicI64 = AtomicI64::new(0);

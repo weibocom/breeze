@@ -1,7 +1,7 @@
 use crate::{
+    Endpoint, Endpoints, PerformanceTuning, Topology,
     dns::{DnsConfig, DnsLookup},
     select::Distance,
-    Endpoint, Endpoints, PerformanceTuning, Topology,
 };
 use discovery::TopologyWrite;
 use protocol::{Protocol, Request, Resource::Uuid};

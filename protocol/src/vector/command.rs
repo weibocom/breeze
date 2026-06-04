@@ -1,4 +1,4 @@
-use crate::{redis::command::CommandHasher, OpCode, Operation, Result};
+use crate::{OpCode, Operation, Result, redis::command::CommandHasher};
 
 // 指令参数需要配合实际请求的token数进行调整，所以外部使用都通过方法获取
 #[derive(Default, Debug)]

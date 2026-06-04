@@ -84,7 +84,7 @@ pub enum Hasher {
     Rawcrc32local(Rawcrc32local),                 // raw or crc32local
     Crc32Abs(Crc32Abs), // crc32abs: 基于i32转换，然后直接取abs；其他走i64提升为正数
     Crc32AbsDelimiter(Crc32AbsDelimiter), // crc32abs: 基于i32转换，然后直接取abs，同时支持分隔符，格式：$start+$hashkey+$delimiter$
-    Crc64(Crc64),       // Crc64 算法，对整个key做crc64计算
+    Crc64(Crc64),                         // Crc64 算法，对整个key做crc64计算
     Fnv1aF64(Fnv1aF64),
     Random(RandomHash), // random hash
     RawSuffix(RawSuffix),

@@ -1,7 +1,7 @@
+use protocol::kv::common::value::Value;
 use protocol::kv::common::value::convert::duration::MyDuration;
 use protocol::kv::common::value::convert::regex::parse_mysql_time_string;
-use protocol::kv::common::value::convert::{from_value, from_value_opt, FromValue};
-use protocol::kv::common::value::Value;
+use protocol::kv::common::value::convert::{FromValue, from_value, from_value_opt};
 
 use proptest::proptest;
 

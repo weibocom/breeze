@@ -1,4 +1,4 @@
-use super::{base::Adder, Snapshot};
+use super::{Snapshot, base::Adder};
 use crate::{IncrTo, ItemData, ItemWriter as Writer};
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]

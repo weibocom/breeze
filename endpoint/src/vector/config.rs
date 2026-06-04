@@ -1,10 +1,10 @@
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
 pub use crate::kv::config::Years;
-use crate::{Timeout, TO_VECTOR_M, TO_VECTOR_S};
+use crate::{TO_VECTOR_M, TO_VECTOR_S, Timeout};
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct VectorNamespace {

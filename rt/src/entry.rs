@@ -1,11 +1,11 @@
 use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use super::timeout::*;
 
-use ds::time::{interval, Duration, Instant, Interval};
+use ds::time::{Duration, Instant, Interval, interval};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 

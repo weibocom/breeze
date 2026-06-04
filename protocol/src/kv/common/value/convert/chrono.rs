@@ -15,7 +15,7 @@ use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use crate::value::Value;
 
 use super::{
-    parse_mysql_datetime_string, parse_mysql_time_string, ConvIr, FromValueError, ParseIr,
+    ConvIr, FromValueError, ParseIr, parse_mysql_datetime_string, parse_mysql_time_string,
 };
 
 impl ConvIr<NaiveDateTime> for ParseIr<NaiveDateTime> {
@@ -164,11 +164,7 @@ impl ConvIr<chrono::Duration> for ParseIr<chrono::Duration> {
                             + chrono::Duration::minutes(minutes.into())
                             + chrono::Duration::seconds(seconds.into())
                             + chrono::Duration::microseconds(microseconds.into());
-                        if is_neg {
-                            -duration
-                        } else {
-                            duration
-                        }
+                        if is_neg { -duration } else { duration }
                     }
                     _ => return Err(FromValueError(Value::Bytes(val_bytes))),
                 };

@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
-use endpoint::msgque::strategy::Fixed;
-/// 验证读写策略，离线策略
-use endpoint::msgque::strategy::RoundRobbin;
 use endpoint::msgque::ReadStrategy;
 use endpoint::msgque::SizedQueueInfo;
 use endpoint::msgque::WriteStrategy;
+use endpoint::msgque::strategy::Fixed;
+/// 验证读写策略，离线策略
+use endpoint::msgque::strategy::RoundRobbin;
 use rand::random;
 
 mod protocol;

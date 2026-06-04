@@ -12,9 +12,9 @@ use std::marker::PhantomData;
 use crate::kv::common::packets::{Column, OldEofPacket, ResultSetTerminator};
 use crate::kv::common::query_result::{Or, SetIteratorState};
 use crate::kv::common::row::Row;
+use SetIteratorState::*;
 use bytes::BufMut;
 use ds::Utf8;
-use SetIteratorState::*;
 
 const CRLF: &[u8] = b"\r\n";
 

@@ -2,8 +2,8 @@
 
 use std::io::{Error, ErrorKind::Other};
 
-use ds::time::{timeout, Duration};
-use hyper::{client::HttpConnector, Client, Uri};
+use ds::time::{Duration, timeout};
+use hyper::{Client, Uri, client::HttpConnector};
 use serde::Deserialize;
 
 pub struct Vintage {

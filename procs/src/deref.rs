@@ -1,7 +1,7 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, FnArg, ItemTrait, PatType, TraitItem, TraitItemMethod};
+use syn::{FnArg, ItemTrait, PatType, TraitItem, TraitItemMethod, parse_macro_input};
 
 // 在 trait 上添加 #[procs::dispatcher_trait_deref] 属性，则所有实现了Deref<T:Trait>的类型，都会自动实现该 trait
 pub fn impl_trait_for_deref_target(_attr: TokenStream, input: TokenStream) -> TokenStream {

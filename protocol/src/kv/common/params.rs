@@ -7,12 +7,12 @@
 // modified, or distributed except according to those terms.
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     error::Error,
     fmt,
 };
 
-use super::value::{convert::ToValue, Value};
+use super::value::{Value, convert::ToValue};
 
 /// `FromValue` conversion error.
 #[derive(Debug, Eq, PartialEq, Clone)]

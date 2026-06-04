@@ -20,9 +20,9 @@ use sharding::hash::Hash;
 
 use self::reqpacket::RequestPacket;
 use self::rsppacket::ResponsePacket;
+use crate::HandShake;
 use crate::kv::client::Client;
 use crate::kv::{ContextStatus, HandShakeStatus};
-use crate::HandShake;
 pub use command::CommandType;
 
 #[derive(Clone, Default)]

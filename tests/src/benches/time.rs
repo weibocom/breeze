@@ -1,4 +1,4 @@
-use criterion::{black_box, Criterion};
+use criterion::{Criterion, black_box};
 pub(super) fn bench_instant(c: &mut Criterion) {
     let mut group = c.benchmark_group("time_instant");
     group.bench_function("std", |b| {

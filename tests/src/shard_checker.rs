@@ -266,7 +266,9 @@ fn check_readed_redis_hasher() {
     for entry in files {
         let path = entry.path();
         let fname = path.file_name().unwrap().to_string_lossy();
-        if !fname.ends_with(".txt") { continue; }
+        if !fname.ends_with(".txt") {
+            continue;
+        }
         let port: u16 = match fname.trim_end_matches(".txt").parse() {
             Ok(p) => p,
             Err(_) => continue,
@@ -280,12 +282,17 @@ fn check_readed_redis_hasher() {
         for line in reader.lines() {
             let key = line.unwrap();
             let key = key.trim();
-            if key.is_empty() { continue; }
+            if key.is_empty() {
+                continue;
+            }
             // shards[idx].push(key.to_string());
             let hash = hasher.hash(&key.as_bytes());
             let shard_idx = dist.index(hash);
             if shard_idx != idx {
-                println!("key={} hash={} shard_idx={} file={} idx={}", key, hash, shard_idx, fname, idx);
+                println!(
+                    "key={} hash={} shard_idx={} file={} idx={}",
+                    key, hash, shard_idx, fname, idx
+                );
             }
         }
         println!("已处理端口文件: {}", path.display());
@@ -302,5 +309,4 @@ fn check_crc32abs_hasher() {
     let hash = hasher.hash(&key.as_bytes());
     let idx = dist.index(hash);
     println!("key: {}, hash: {}, idx: {}", key, hash, idx);
-
 }

@@ -2,7 +2,7 @@ use metrics::Metric;
 // 定期更新discovery.
 use super::{Discover, TopologyWrite};
 use ds::chan::Receiver;
-use ds::time::{interval, Duration};
+use ds::time::{Duration, interval};
 
 use std::collections::HashMap;
 

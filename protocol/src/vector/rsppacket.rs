@@ -3,9 +3,10 @@
 use bytes::BytesMut;
 use std::fmt::{self, Debug, Display, Formatter};
 
+use crate::kv::HandShakeStatus;
 use crate::kv::client::Client;
-use crate::kv::common::constants::StatusFlags;
 use crate::kv::common::constants::DEFAULT_MAX_ALLOWED_PACKET;
+use crate::kv::common::constants::StatusFlags;
 use crate::kv::common::error::DriverError;
 use crate::kv::common::io::ReadMysqlExt;
 use crate::kv::common::packets::{AuthPlugin, Column, CommonOkPacket, HandshakeResponse, OkPacket};
@@ -14,7 +15,6 @@ use crate::kv::common::{constants::CapabilityFlags, io::ParseBuf, packets::Hands
 use crate::kv::common::{proto::codec::PacketCodec, query_result::Or};
 use crate::kv::error::Error;
 use crate::kv::error::Result;
-use crate::kv::HandShakeStatus;
 use crate::{Command, StreamContext};
 use ds::RingSlice;
 

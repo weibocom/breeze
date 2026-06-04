@@ -68,7 +68,7 @@ pub(crate) fn start_metrics_register_task(_ctx: &Context) {
     rt::spawn(metrics::MetricRegister::default());
 }
 
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{SignalKind, signal};
 fn init_signal() {
     let stream = signal(SignalKind::terminate());
     match stream {

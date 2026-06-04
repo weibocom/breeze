@@ -3,7 +3,7 @@ use metric::MetricStream;
 
 use std::io;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll, Waker};
+use std::task::{Context, Poll, Waker, ready};
 
 use ds::{GuardedBuffer, MemGuard, MemPolicy, RingSlice};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};

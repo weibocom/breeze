@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, punctuated::Punctuated, token::Comma, AttributeArgs, FnArg, Ident,
-    ItemTrait, NestedMeta, PatType, ReturnType, Type,
+    AttributeArgs, FnArg, Ident, ItemTrait, NestedMeta, PatType, ReturnType, Type,
+    parse_macro_input, punctuated::Punctuated, token::Comma,
 };
 
 #[derive(Clone, Copy)]

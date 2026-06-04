@@ -23,11 +23,7 @@ impl<'a, C> Reader<'a, C> {
     // 如果eof了，则返回错误，否则返回读取的num数量
     #[inline(always)]
     pub(crate) fn check(&self) -> Result<()> {
-        if self.n > 0 {
-            Ok(())
-        } else {
-            Err(Error::Eof)
-        }
+        if self.n > 0 { Ok(()) } else { Err(Error::Eof) }
     }
 }
 

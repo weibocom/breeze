@@ -1,4 +1,4 @@
-use super::{bkdr::Bkdr, crc32::Crc32, Hash};
+use super::{Hash, bkdr::Bkdr, crc32::Crc32};
 
 /// key：${num}#suffix，对数字部分进行 bkdr + abs + crc32；属小众业务算法。
 /// 对于i32溢出，一般有类型提升 vs abs两种策略，bkdr自身是有abs，但考虑避免后面bkdr符号变化的影响，此处仍然进行abs；

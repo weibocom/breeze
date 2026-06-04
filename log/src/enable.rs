@@ -63,10 +63,10 @@ pub fn private_api_enabled(level: Level, target: &str) -> bool {
 use elog::LevelFilter;
 use log4rs::{
     append::rolling_file::{
-        policy::compound::{
-            roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy,
-        },
         RollingFileAppender,
+        policy::compound::{
+            CompoundPolicy, roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger,
+        },
     },
     config::{Appender, Config, Root},
     encode::pattern::PatternEncoder,

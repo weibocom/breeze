@@ -6,16 +6,16 @@ use crate::{Command, StreamContext};
 use super::client::Client;
 use super::common::{buffer_pool::Buffer, proto::codec::PacketCodec, query_result::Or};
 
+use super::HandShakeStatus;
 use super::error::Error;
 use super::error::Result;
 use super::packet::PacketData;
-use super::HandShakeStatus;
 
 use bytes::BytesMut;
 use core::num::NonZeroUsize;
 use std::fmt::{self, Debug, Display, Formatter};
 
-use super::common::constants::{StatusFlags, MAX_PAYLOAD_LEN};
+use super::common::constants::{MAX_PAYLOAD_LEN, StatusFlags};
 use super::common::error::DriverError;
 use super::common::packets::{
     AuthPlugin, Column, CommonOkPacket, HandshakeResponse, OkPacket, OkPacketDeserializer,

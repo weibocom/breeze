@@ -13,17 +13,17 @@
 use std::{cmp::Ordering, convert::TryFrom, str::from_utf8};
 
 use time03::{
+    Date, PrimitiveDateTime, Time,
     error::{Parse, TryFromParsed},
     format_description::{
-        modifier::{self, Subsecond},
         Component, FormatItem,
+        modifier::{self, Subsecond},
     },
-    Date, PrimitiveDateTime, Time,
 };
 
 use crate::value::Value;
 
-use super::{parse_mysql_time_string, ConvIr, FromValueError, ParseIr};
+use super::{ConvIr, FromValueError, ParseIr, parse_mysql_time_string};
 
 lazy_static::lazy_static! {
     static ref FULL_YEAR: modifier::Year = {
@@ -294,11 +294,7 @@ impl ConvIr<time03::Duration> for ParseIr<time03::Duration> {
                             + time03::Duration::minutes(minutes.into())
                             + time03::Duration::seconds(seconds.into())
                             + time03::Duration::microseconds(microseconds.into());
-                        if is_neg {
-                            -duration
-                        } else {
-                            duration
-                        }
+                        if is_neg { -duration } else { duration }
                     }
                     _ => return Err(FromValueError(Value::Bytes(val_bytes))),
                 };

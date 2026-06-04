@@ -1,10 +1,10 @@
-use ds::{cow, CowReadHandle, CowWriteHandle};
+use ds::{CowReadHandle, CowWriteHandle, cow};
 
 use std::{
     ops::Deref,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 

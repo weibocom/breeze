@@ -1,5 +1,5 @@
 use context::Quadruple;
-use ds::time::{sleep, Duration};
+use ds::time::{Duration, sleep};
 use net::Listener;
 use rt::spawn;
 use std::sync::Arc;

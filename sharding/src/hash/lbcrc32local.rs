@@ -3,8 +3,8 @@
 use std::fmt::Display;
 
 use super::{
-    crc32::{CRC32TAB, CRC_SEED},
     DebugName,
+    crc32::{CRC_SEED, CRC32TAB},
 };
 
 // LBCrc32local算法，需要先转为u64的bytes，然后再计算hash

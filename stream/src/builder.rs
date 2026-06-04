@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ds::chan::mpsc::{channel, Sender, TrySendError};
+use ds::chan::mpsc::{Sender, TrySendError, channel};
 
 use ds::Switcher;
 

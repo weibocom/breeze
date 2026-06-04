@@ -238,8 +238,10 @@ mod tests {
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
-            &format!("select a,b from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) group by b order by a,b desc limit 24 offset 12")
-            );
+            &format!(
+                "select a,b from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) group by b order by a,b desc limit 24 offset 12"
+            )
+        );
 
         // vcard
         let vector_cmd = VectorCmd {
@@ -280,8 +282,10 @@ mod tests {
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
-            &format!("select count(*) from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) order by a desc limit 24 offset 12")
-            );
+            &format!(
+                "select count(*) from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) order by a desc limit 24 offset 12"
+            )
+        );
 
         //vadd
         let vector_cmd = VectorCmd {
@@ -373,7 +377,9 @@ mod tests {
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
-            &format!("update db_name_{db_idx}.table_name_2105 set `a`='1',`b`='bb' where `kid`='id' and `a`='1' and `b` in (2,3)")
+            &format!(
+                "update db_name_{db_idx}.table_name_2105 set `a`='1',`b`='bb' where `kid`='id' and `a`='1' and `b` in (2,3)"
+            )
         );
 
         //vdel
@@ -414,9 +420,11 @@ mod tests {
         println!("len: {}, act len: {}", builder.len(), buf.len());
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
-                buf,
-                &format!("delete from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3)")
-                );
+            buf,
+            &format!(
+                "delete from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3)"
+            )
+        );
 
         // vget
         let vector_cmd = VectorCmd {
@@ -515,7 +523,9 @@ mod tests {
         let db_idx = strategy.distribution().db_idx(hash);
         assert_eq!(
             buf,
-            &format!("select a,b from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) group by b order by a,b desc limit 24 offset 12")
-            );
+            &format!(
+                "select a,b from db_name_{db_idx}.table_name_2105 where `kid`='id' and `a`='1' and `b` in (2,3) group by b order by a,b desc limit 24 offset 12"
+            )
+        );
     }
 }

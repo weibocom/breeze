@@ -66,7 +66,7 @@ impl Path {
     }
 }
 
-use crate::{types::Status, Count, Empty, Qps, Ratio, Rtt};
+use crate::{Count, Empty, Qps, Ratio, Rtt, types::Status};
 use enum_dispatch::enum_dispatch;
 #[enum_dispatch(Snapshot)]
 #[repr(u8)]

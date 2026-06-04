@@ -1,4 +1,4 @@
-use ds::time::{interval, Duration};
+use ds::time::{Duration, interval};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -7,7 +7,7 @@ use crate::{Id, Item, ItemData, Metric};
 const CHUNK_SIZE: usize = 4096;
 
 use tokio::{
-    sync::mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
+    sync::mpsc::{UnboundedReceiver as Receiver, UnboundedSender as Sender, unbounded_channel},
     time::Interval,
 };
 
@@ -211,7 +211,7 @@ impl Default for MetricRegister {
 use std::{
     future::Future,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
 
 impl Future for MetricRegister {

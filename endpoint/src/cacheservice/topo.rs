@@ -6,8 +6,8 @@ use protocol::{Protocol, Request, Resource::Memcache};
 use sharding::hash::{Hash, HashKey, Hasher};
 
 use super::config::Flag;
-use crate::shards::Shards;
 use crate::PerformanceTuning;
+use crate::shards::Shards;
 use protocol::Bit;
 
 #[derive(Clone)]

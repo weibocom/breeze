@@ -1,7 +1,7 @@
 use crate::proto_hook;
 use protocol::{
-    msgque::{MsgQue, OP_GET, OP_QUIT, OP_SET, OP_STATS, OP_VERSION},
     Error, Proto,
+    msgque::{MsgQue, OP_GET, OP_QUIT, OP_SET, OP_STATS, OP_VERSION},
 };
 
 use protocol::BufRead;

@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-use crate::{msgque::ReadStrategy, CloneableAtomicUsize};
+use crate::{CloneableAtomicUsize, msgque::ReadStrategy};
 use std::sync::atomic::Ordering::Relaxed;
 
 // const HITS_BITS: u32 = 8;

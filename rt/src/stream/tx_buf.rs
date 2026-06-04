@@ -3,7 +3,7 @@ use metrics::base::*;
 use super::MemPolicy;
 use std::{
     mem::ManuallyDrop,
-    ptr::{copy_nonoverlapping as copy, NonNull},
+    ptr::{NonNull, copy_nonoverlapping as copy},
 };
 // 最大支持u32::MAX大小的buffer。
 #[derive(Debug)]
