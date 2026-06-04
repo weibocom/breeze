@@ -1,4 +1,4 @@
-use crate::{callback::CallbackContext, BackendQuota, Command, Context, Error, HashedCommand};
+use crate::{BackendQuota, Command, Context, Error, HashedCommand, callback::CallbackContext};
 use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr::NonNull,

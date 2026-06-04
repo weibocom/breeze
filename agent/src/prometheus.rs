@@ -1,8 +1,8 @@
 use metrics::prometheus::Prometheus;
 
 use ds::lock::Lock;
-use ds::time::{interval, timeout, Duration, Instant};
-use hyper::{header::CONTENT_TYPE, Body, Client, Request, Response, StatusCode};
+use ds::time::{Duration, Instant, interval, timeout};
+use hyper::{Body, Client, Request, Response, StatusCode, header::CONTENT_TYPE};
 use lazy_static::lazy_static;
 use tokio_util::io::ReaderStream;
 

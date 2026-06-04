@@ -4,18 +4,18 @@ use std::{
     future::Future,
     net::Ipv4Addr as IpAddr,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender as Sender};
+use tokio::sync::mpsc::{UnboundedSender as Sender, unbounded_channel};
 
 mod lookup;
 use lookup::*;
 
 use ds::{
-    time::{interval, Duration},
     CowReadHandle, ReadGuard,
+    time::{Duration, interval},
 };
 static DNSCACHE: OnceCell<CowReadHandle<DnsCache>> = OnceCell::new();
 

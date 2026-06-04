@@ -1,8 +1,8 @@
 use std::{marker::PhantomData, ptr::NonNull, sync::Arc};
 
 use protocol::{
-    callback::CallbackContext, request::Request, Command, Commander, HashedCommand, Metric,
-    MetricItem, Protocol,
+    Command, Commander, HashedCommand, Metric, MetricItem, Protocol, callback::CallbackContext,
+    request::Request,
 };
 
 use crate::arena::CallbackContextArena;

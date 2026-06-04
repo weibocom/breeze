@@ -1,4 +1,4 @@
-use crate::{Timeout, TO_UUID};
+use crate::{TO_UUID, Timeout};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Deserialize)]

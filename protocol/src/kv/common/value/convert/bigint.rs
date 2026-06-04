@@ -120,7 +120,7 @@ mod tests {
     use num_bigint::{BigInt, BigUint};
     use proptest::prelude::*;
 
-    use crate::kv::common::value::{convert::from_value, Value};
+    use crate::kv::common::value::{Value, convert::from_value};
 
     proptest! {
         #[test]

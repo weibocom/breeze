@@ -16,7 +16,7 @@ use time::{Date, ParseError, PrimitiveDateTime, Time};
 
 use crate::value::Value;
 
-use super::{parse_mysql_time_string, ConvIr, FromValueError, ParseIr};
+use super::{ConvIr, FromValueError, ParseIr, parse_mysql_time_string};
 
 impl ConvIr<PrimitiveDateTime> for ParseIr<PrimitiveDateTime> {
     fn new(value: Value) -> Result<ParseIr<PrimitiveDateTime>, FromValueError> {
@@ -194,11 +194,7 @@ impl ConvIr<time::Duration> for ParseIr<time::Duration> {
                             + time::Duration::minutes(minutes.into())
                             + time::Duration::seconds(seconds.into())
                             + time::Duration::microseconds(microseconds.into());
-                        if is_neg {
-                            -duration
-                        } else {
-                            duration
-                        }
+                        if is_neg { -duration } else { duration }
                     }
                     _ => return Err(FromValueError(Value::Bytes(val_bytes))),
                 };

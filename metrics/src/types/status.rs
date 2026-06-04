@@ -1,4 +1,4 @@
-use super::{base::Adder, ItemData};
+use super::{ItemData, base::Adder};
 use crate::ItemWriter as Writer;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -30,7 +30,7 @@ impl super::Snapshot for Status {
 }
 
 pub mod pub_status {
-    use crate::{base::Adder, IncrTo, ItemData};
+    use crate::{IncrTo, ItemData, base::Adder};
     // 0: ok
     // -1: error
     // 2..: notify

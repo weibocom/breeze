@@ -1,7 +1,7 @@
 use crate::{
+    Endpoint, Endpoints, Topology,
     dns::{DnsConfig, DnsLookup},
     select::Distance,
-    Endpoint, Endpoints, Topology,
 };
 use discovery::{Inited, TopologyWrite};
 use protocol::{Protocol, Request, Resource::Phantom};
@@ -71,7 +71,7 @@ where
 
         let mut ctx = super::Context::from(*req.context_mut());
         let idx = ctx.fetch_add_idx(); // 按顺序轮询
-                                       // 写操作，写所有实例
+        // 写操作，写所有实例
         req.write_back(req.operation().is_store() && ctx.index() < shard.len());
         // 读操作，只重试一次
         req.try_next(idx == 0);

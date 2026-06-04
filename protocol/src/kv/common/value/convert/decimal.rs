@@ -12,7 +12,7 @@
 
 use rust_decimal::Decimal;
 
-use std::str::{from_utf8, FromStr};
+use std::str::{FromStr, from_utf8};
 
 use super::{ConvIr, FromValue, FromValueError, ParseIr, Value};
 

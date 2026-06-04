@@ -3,7 +3,7 @@ use std::io;
 use crate::kv::common::{
     constants::SessionStateType,
     io::ParseBuf,
-    misc::raw::{bytes::EofBytes, int::LenEnc, RawBytes},
+    misc::raw::{RawBytes, bytes::EofBytes, int::LenEnc},
     proto::{MyDeserialize, MySerialize},
 };
 

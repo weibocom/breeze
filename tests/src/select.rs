@@ -1,5 +1,5 @@
 use discovery::distance::Addr;
-use endpoint::{select::Distance, Endpoint};
+use endpoint::{Endpoint, select::Distance};
 struct TBackend {
     addr: String,
     available: bool,

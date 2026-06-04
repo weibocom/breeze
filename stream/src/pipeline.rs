@@ -3,21 +3,21 @@ use std::{
     future::Future,
     pin::Pin,
     sync::Arc,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
 
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::topology::TopologyCheck;
-use ds::{time::Instant, AtomicWaker};
+use ds::{AtomicWaker, time::Instant};
 use endpoint::Topology;
 use protocol::Error::FlushOnClose;
 use protocol::{HashedCommand, Protocol, Result, Stream};
 
 use crate::{
+    CallbackContext, Request, StreamMetrics,
     arena::CallbackContextArena,
     context::{CallbackContextPtr, ResponseContext},
-    CallbackContext, Request, StreamMetrics,
 };
 
 pub async fn copy_bidirectional<C, P, T>(

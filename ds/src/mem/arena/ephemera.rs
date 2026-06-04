@@ -1,5 +1,5 @@
 use std::{
-    alloc::{alloc, Layout},
+    alloc::{Layout, alloc},
     fmt::{Debug, Formatter},
     ptr::NonNull,
     sync::atomic::{AtomicU64, AtomicUsize, Ordering::*},

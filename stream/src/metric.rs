@@ -1,5 +1,5 @@
 use metrics::{Metric, Path};
-use protocol::{Metric as ProtoMetric, MetricName, Operation, OPS};
+use protocol::{Metric as ProtoMetric, MetricName, OPS, Operation};
 macro_rules! define_metrics {
     ($($t:ident:$($name:ident-$key:expr),+);+) => {
         pub struct StreamMetrics {

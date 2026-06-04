@@ -2,9 +2,9 @@ use core::fmt::Write;
 use std::fmt::Display;
 
 use super::common::proto::codec::PacketCodec;
+use crate::HashedCommand;
 use crate::kv::MysqlBinary;
 use crate::kv::{Binary, OP_ADD, OP_DEL, OP_GET, OP_GETK, OP_SET};
-use crate::HashedCommand;
 use crate::{Error::FlushOnClose, Result};
 use ds::{RingSlice, Utf8};
 use sharding::{distribution::DBRange, hash::Hasher};

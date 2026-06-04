@@ -1,26 +1,26 @@
 use std::collections::HashMap;
 
 use chrono::Datelike;
+use discovery::TopologyWrite;
 use discovery::dns;
 use discovery::dns::IPPort;
-use discovery::TopologyWrite;
 use ds::MemGuard;
-use protocol::kv::{ContextStatus, MysqlBuilder};
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
+use protocol::kv::{ContextStatus, MysqlBuilder};
 use sharding::hash::{Hash, HashKey};
 
-use crate::dns::DnsConfig;
 use crate::Timeout;
+use crate::dns::DnsConfig;
 use crate::{Endpoint, Topology};
 use protocol::vector::mysql::SqlBuilder;
 
 use super::config::VectorNamespace;
 use super::strategy::Strategist;
-use crate::kv::topo::Shards;
 use crate::kv::KVCtx;
+use crate::kv::topo::Shards;
 use crate::shards::Shard;
 #[derive(Clone)]
 pub struct VectorService<E, P> {

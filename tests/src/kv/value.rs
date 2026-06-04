@@ -1,6 +1,6 @@
 use std::io;
 
-use protocol::kv::common::{value::Value, ParseBuf};
+use protocol::kv::common::{ParseBuf, value::Value};
 
 #[test]
 fn should_escape_string() {
@@ -137,8 +137,8 @@ mod benches {
 
 #[test]
 fn mysql_simple_issue_284() -> io::Result<()> {
-    use ds::RingSlice;
     use Value::*;
+    use ds::RingSlice;
 
     let data = vec![1, 49, 1, 50, 1, 51, 251, 1, 52, 1, 53, 251, 1, 55];
     let slice = RingSlice::from_vec(&data);

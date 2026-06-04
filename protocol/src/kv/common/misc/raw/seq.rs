@@ -16,8 +16,8 @@ use crate::kv::common::{
 };
 
 use super::{
-    int::{IntRepr, LeU32, LeU64},
     RawInt,
+    int::{IntRepr, LeU32, LeU64},
 };
 
 // 序列号的values，目前不需要，有需要再考虑改为RingSlice fishermen

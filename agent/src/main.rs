@@ -9,7 +9,7 @@ use context::Context;
 use discovery::*;
 mod init;
 
-use ds::time::{sleep, Duration};
+use ds::time::{Duration, sleep};
 use rt::spawn;
 
 use protocol::Result;

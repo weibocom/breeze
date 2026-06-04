@@ -24,7 +24,7 @@ const TO_MYSQL_S: Timeout = Timeout::from_millis(500);
 const TO_VECTOR_M: Timeout = Timeout::from_millis(1000);
 const TO_VECTOR_S: Timeout = Timeout::from_millis(500);
 const TO_UUID: Timeout = Timeout::from_millis(100);
-const TO_MIN_MS: u32 = 20;  // timeout最小值，单位ms
+const TO_MIN_MS: u32 = 20; // timeout最小值，单位ms
 const TO_MAX_MS: u32 = 6000; // timeout最大值，单位ms
 
 #[derive(Copy, Clone, Debug)]

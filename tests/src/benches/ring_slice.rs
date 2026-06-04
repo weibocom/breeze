@@ -1,4 +1,4 @@
-use criterion::{black_box, Criterion};
+use criterion::{Criterion, black_box};
 use ds::{ByteOrder, RingSlice};
 pub(super) fn bench_iter(c: &mut Criterion) {
     let cap = 128;

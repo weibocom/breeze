@@ -1,4 +1,4 @@
-use criterion::{black_box, Criterion};
+use criterion::{Criterion, black_box};
 pub(super) fn bench_get_checked(c: &mut Criterion) {
     let slice = (0..64).into_iter().map(|x| x as u8).collect::<Vec<u8>>();
     let len = slice.len();

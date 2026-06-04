@@ -10,7 +10,7 @@ mod disabled;
 mod enabled;
 
 #[cfg(feature = "buffer-pool")]
-pub use enabled::{get_buffer, Buffer};
+pub use enabled::{Buffer, get_buffer};
 
 #[cfg(not(feature = "buffer-pool"))]
 pub use disabled::Buffer;

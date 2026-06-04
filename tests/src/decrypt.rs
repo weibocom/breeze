@@ -1,4 +1,4 @@
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use ds::decrypt::decrypt_password;
 
 /// 测试场景：正常&异常解密密码

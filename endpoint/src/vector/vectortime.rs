@@ -4,8 +4,8 @@ use super::strategy::Postfix;
 use chrono::NaiveDate;
 use core::fmt::Write;
 use ds::RingSlice;
-use protocol::kv::Strategy;
 use protocol::Error;
+use protocol::kv::Strategy;
 use sharding::{distribution::DBRange, hash::Hasher};
 
 #[derive(Clone, Debug)]

@@ -1,9 +1,9 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
+    FnArg, ItemEnum, ItemTrait, PatType, Result, Token, TraitItem, Visibility, WhereClause,
     parse::{Parse, ParseStream},
-    parse_macro_input, FnArg, ItemEnum, ItemTrait, PatType, Result, Token, TraitItem, Visibility,
-    WhereClause,
+    parse_macro_input,
 };
 pub fn topology_dispatcher(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as TopologyInput);

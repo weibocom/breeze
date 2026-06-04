@@ -1,4 +1,4 @@
-use ds::time::{sleep, Duration};
+use ds::time::{Duration, sleep};
 pub(crate) struct ReconnPolicy {
     conns: usize,
     continue_fails: usize,

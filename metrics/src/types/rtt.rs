@@ -1,6 +1,6 @@
 use ds::time::Duration;
 
-use super::{base::Adder, IncrTo, ItemData};
+use super::{IncrTo, ItemData, base::Adder};
 use crate::ItemWriter as Writer;
 pub const MAX: Duration = Duration::from_millis(30);
 const SLOW_US: i64 = Duration::from_millis(100).as_micros() as i64;

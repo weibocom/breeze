@@ -6,10 +6,10 @@ use ds::{ByteOrder, RingSlice};
 
 use crate::kv::{
     common::{
+        ParseBuf,
         constants::{CapabilityFlags, StatusFlags},
         error::Error::MySqlError,
         packets::{ErrPacket, OkPacket, OkPacketDeserializer, OkPacketKind},
-        ParseBuf,
     },
     error::{Error, Result},
 };

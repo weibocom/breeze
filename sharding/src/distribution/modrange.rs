@@ -31,7 +31,11 @@ impl ModRange {
         let rs = val as u64 / self.interval;
         if rs >= self.shards as u64 {
             // 超出范围，返回最后一个分片
-            log::warn!("found modrange slot out of bound, rs:{}, shards:{}", rs, self.shards);
+            log::warn!(
+                "found modrange slot out of bound, rs:{}, shards:{}",
+                rs,
+                self.shards
+            );
             return self.shards - 1;
         }
         rs as usize

@@ -11,7 +11,7 @@ use std::{marker::PhantomData, sync::Arc};
 use crate::kv::common::packets::Column;
 use crate::kv::common::row::Row;
 
-use super::row::convert::{from_row, FromRow};
+use super::row::convert::{FromRow, from_row};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Or<A, B> {

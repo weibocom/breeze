@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering::*};
 
-use criterion::{black_box, Criterion};
+use criterion::{Criterion, black_box};
 
 use ds::arena::{Allocator, Heap};
 pub(super) fn bench_alloc(c: &mut Criterion) {

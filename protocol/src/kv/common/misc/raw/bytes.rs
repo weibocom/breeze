@@ -19,7 +19,7 @@ use crate::kv::common::{
     proto::{MyDeserialize, MySerialize},
 };
 
-use super::{int::VarLen, RawInt};
+use super::{RawInt, int::VarLen};
 
 /// Wrapper for a raw byte sequence, that came from a server.
 ///

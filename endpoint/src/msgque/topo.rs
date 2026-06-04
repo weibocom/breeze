@@ -9,11 +9,11 @@ use std::fmt::{Display, Formatter};
 use std::sync::atomic::Ordering::{Acquire, Release};
 use std::time::Instant;
 
-use super::config::Namespace;
 use super::Shard;
+use super::config::Namespace;
 use super::{
-    strategy::{Fixed, RoundRobbin},
     ReadStrategy, WriteStrategy,
+    strategy::{Fixed, RoundRobbin},
 };
 use crate::dns::{DnsConfig, DnsLookup};
 use crate::msgque::SizedQueueInfo;

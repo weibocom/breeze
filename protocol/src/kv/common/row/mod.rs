@@ -14,8 +14,8 @@ use crate::kv::common::{
     packets::{Column, NullBitmap},
     proto::{Binary, MyDeserialize, Text},
     value::{
-        convert::{from_value, from_value_opt, FromValue, FromValueError},
         BinValue, SerializationSide, TextValue, Value, ValueDeserializer,
+        convert::{FromValue, FromValueError, from_value, from_value_opt},
     },
 };
 use std::{fmt, io, marker::PhantomData, ops::Index, sync::Arc};

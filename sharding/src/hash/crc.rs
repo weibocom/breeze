@@ -1,4 +1,4 @@
-use super::{Hash, HashKey, CRC32TAB, CRC_SEED};
+use super::{CRC_SEED, CRC32TAB, Hash, HashKey};
 #[derive(Default)]
 pub struct Crc32Hasher<A, B, C, D> {
     range: A,  // 用于截取key的范围

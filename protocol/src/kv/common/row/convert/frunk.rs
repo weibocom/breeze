@@ -10,15 +10,15 @@
 
 #![cfg(feature = "frunk")]
 
-use frunk::{hlist::h_cons, prelude::HList};
 pub use frunk::{HCons, HNil};
+use frunk::{hlist::h_cons, prelude::HList};
 
 use super::{FromRow, FromRowError};
 use crate::{
-    row::{new_row_raw, Row},
+    row::{Row, new_row_raw},
     value::{
-        convert::{ConvIr, FromValue, FromValueError},
         Value,
+        convert::{ConvIr, FromValue, FromValueError},
     },
 };
 

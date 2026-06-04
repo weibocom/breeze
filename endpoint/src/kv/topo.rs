@@ -1,29 +1,29 @@
 use std::collections::HashMap;
 
+use discovery::TopologyWrite;
 use discovery::distance::ByDistance;
 use discovery::dns;
 use discovery::dns::IPPort;
-use discovery::TopologyWrite;
 use ds::MemGuard;
-use protocol::kv::Binary;
-use protocol::kv::ContextStatus;
-use protocol::kv::MysqlBuilder;
-use protocol::kv::Strategy;
 use protocol::Protocol;
 use protocol::Request;
 use protocol::ResOption;
 use protocol::Resource;
+use protocol::kv::Binary;
+use protocol::kv::ContextStatus;
+use protocol::kv::MysqlBuilder;
+use protocol::kv::Strategy;
 use rand::seq::SliceRandom;
 use sharding::hash::{Hash, HashKey};
 
-use crate::dns::DnsConfig;
 use crate::Timeout;
-use crate::{shards::Shard, Endpoint, Topology};
+use crate::dns::DnsConfig;
+use crate::{Endpoint, Topology, shards::Shard};
 
+use super::KVCtx;
 use super::config::KvNamespace;
 use super::config::Years;
 use super::strategy::Strategist;
-use super::KVCtx;
 #[derive(Clone)]
 pub struct KvService<E, P> {
     shards: Shards<E>,
