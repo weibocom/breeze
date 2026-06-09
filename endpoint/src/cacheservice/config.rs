@@ -61,7 +61,7 @@ impl Namespace {
     //    }
     //}
     pub(crate) fn try_from(cfg: &str, _namespace: &str) -> Option<Self> {
-        log::debug!("namespace:{} cfg:{} updating", _namespace, cfg);
+        log::debug!("+++ namespace:{} cfg:{} updating", _namespace, cfg);
         match serde_yaml::from_str::<Namespace>(cfg) {
             Err(_e) => {
                 log::warn!("parse namespace error. {} msg:{:?}", _namespace, _e);
